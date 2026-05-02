@@ -11,3 +11,6 @@
 - Session-start project content check
 - Security audit: command injection fixed (execFileSync), path traversal sanitized
 - install.sh for one-command setup per CLI
+- Scope migration complete (0 flat resources remaining, fallback removed)
+- Ranking logic extracted to shared/ranking.mjs (single source of truth)
+- All personal data stripped from repo

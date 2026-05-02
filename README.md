@@ -15,6 +15,67 @@ Fork of [Castor6/openviking-plugins](https://github.com/Castor6/openviking-plugi
 
 All share one OV instance, one user, one memory pool. Agent-ID is just a tag.
 
+## How it works
+
+```
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│ Claude Code │  │  Codex CLI  │  │ Gemini CLI  │  │  OpenClaw   │
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+       │                │                │                │
+       │  UserPrompt    │  UserPrompt    │  BeforeAgent   │  before_prompt
+       ▼                ▼                ▼                ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                     auto-recall.mjs                              │
+│                                                                  │
+│  CWD ──► scope-resolver ──► 5 target URIs                       │
+│          │                                                       │
+│          ├──► /search/find (semantic, per scope)  ──┐            │
+│          └──► /search/grep (keywords)             ──┤            │
+│                                                     ▼            │
+│                                              RRF Merge           │
+│                                                     │            │
+│                              ranking.mjs ◄──────────┘            │
+│                              (source authority + backlinks)      │
+│                                     │                            │
+│                              compaction.mjs                      │
+│                              (~30% token reduction)              │
+│                                     │                            │
+│                              scope hints                         │
+│                                     ▼                            │
+│                          <relevant-memories>                     │
+└──────────────────────────────────────────────────────────────────┘
+                              │
+                    ┌─────────┴─────────┐
+                    ▼                   ▼
+              Agent works         On session end
+                    │                   │
+                    │                   ▼
+                    │     ┌─────────────────────────┐
+                    │     │    auto-capture.mjs      │
+                    │     │                          │
+                    │     │  Content Merge (>0.85?)  │
+                    │     │    ├─ yes: append         │
+                    │     │    └─ no: extract new     │
+                    │     │                          │
+                    │     │  Record Used (feedback)  │
+                    │     │  Auto-Link (project)     │
+                    │     └────────────┬─────────────┘
+                    │                  │
+                    ▼                  ▼
+              ┌──────────────────────────────┐
+              │     OpenViking Server        │
+              │     (localhost:1933)          │
+              │                              │
+              │  viking://resources/         │
+              │    ├── system/               │
+              │    ├── infra/                │
+              │    ├── projects/<slug>/      │
+              │    ├── knowledge/            │
+              │    └── tool-docs/            │
+              │  viking://user/memories/     │
+              └──────────────────────────────┘
+```
+
 ## What this adds over Castor6
 
 - **Scoping** — 5 scopes (project, system, infra, knowledge, personal), CWD-based

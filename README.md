@@ -151,6 +151,24 @@ src/       — TypeScript source
 
 Override shared module path: `export OPENVIKING_HOME=/path/to/.openviking`
 
+## OpenClaw
+
+OC uses OV as a **native context engine** — not through these hooks. OC's plugin has 8 lifecycle methods (bootstrap, assemble, ingest, afterTurn, compact, maintain, subagent spawn/end) that run deeper than hook-based recall/capture.
+
+These hooks are for Claude Code, Codex, and Gemini. OC doesn't need them.
+
+OC config (`openclaw config set`):
+```bash
+openclaw config set plugins.entries.openviking.enabled true
+openclaw config set plugins.entries.openviking.config.agentId ralph
+openclaw config set plugins.entries.openviking.config.recallLimit 10
+openclaw config set plugins.slots.contextEngine openviking
+```
+
+OC env vars (gateway.service): `OPENVIKING_URL`, `OPENVIKING_API_KEY`, `OPENVIKING_AGENT_PREFIX`.
+
+See `config/openclaw-plugin.json` for the full reference.
+
 ## License
 
 Apache-2.0

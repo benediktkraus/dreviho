@@ -1,13 +1,33 @@
 {
-  "_comment": "Add this to openclaw.json → plugins.entries.openviking via: openclaw config set",
+  "_comment": "OpenClaw uses OV as native contextEngine — NOT through hooks. Config via: openclaw config set",
+  "_note": "OC's OV plugin only accepts agentId + recallLimit. Other fields (captureMode etc) are for the external hooks, not OC.",
   "enabled": true,
   "hooks": {
     "allowConversationAccess": true
   },
   "config": {
     "agentId": "YOUR_AGENT_ID",
-    "recallLimit": 10,
-    "captureMode": "semantic",
-    "captureAssistantTurns": false
+    "recallLimit": 10
+  },
+  "_env_vars": {
+    "OPENVIKING_URL": "http://localhost:1933",
+    "OPENVIKING_API_KEY": "your-bearer-token",
+    "OPENVIKING_AGENT_PREFIX": "openclaw-main"
+  },
+  "_slots": {
+    "contextEngine": "openviking"
+  },
+  "_dreaming": {
+    "_comment": "Dreaming is configured via memory-core plugin, not OV plugin",
+    "path": "plugins.entries.memory-core.config.dreaming",
+    "enabled": true,
+    "phases": {
+      "deep": {
+        "minRecallCount": 1,
+        "minUniqueQueries": 1,
+        "minScore": 0.5,
+        "recencyHalfLifeDays": 7
+      }
+    }
   }
 }

@@ -27,29 +27,31 @@ All share one OV instance, one user, one memory pool. Agent-ID is just a tag.
 - **2 extra MCP tools** — `memory_search` (glob/grep), `convert_to_markdown` (markitdown)
 - **Session-Start Check** — syncs project context to OV on first visit
 
-## Setup
+## vs Castor6 Original
 
-### 1. Shared modules
+| | Castor6 | This fork |
+|---|---|---|
+| CLIs | Claude Code | + Codex, Gemini, OpenClaw |
+| Search | Semantic only | + grep + RRF merge |
+| Scoping | None | 5 scopes, CWD-based |
+| Dedup | None | Content merge (>0.85) |
+| Ranking | Score only | + source authority + backlinks |
+| Compaction | None | Caveman (~30% reduction) |
+| Relations | None | Auto-link to projects |
+| Feedback | None | Record Used |
+| MCP Tools | 4 | 6 |
+
+## Install
 
 ```bash
-cp shared/* ~/.openviking/
+./install.sh all          # all CLIs
+./install.sh claude-code  # just Claude Code
+./install.sh codex        # just Codex
+./install.sh gemini       # just Gemini
+./install.sh openclaw     # just OpenClaw
 ```
 
-### 2. Per-CLI config
-
-```bash
-cp config/claude-code.json ~/.openviking/claude-code-memory-plugin/config.json
-# Edit: set API key, account, user
-```
-
-### 3. Install hooks
-
-**Claude Code** — via plugin marketplace or copy `hooks/claude-code.json`
-**Codex** — `codex plugin marketplace add` with local marketplace pointing here
-**Gemini** — copy to `~/.gemini/extensions/openviking-memory/`
-**OpenClaw** — `openclaw config set plugins.entries.openviking.enabled true`
-
-See `hooks/` for per-CLI hook definitions, `config/` for config templates.
+Then edit `~/.openviking/<cli>-memory-plugin/config.json` — set API key, account, user.
 
 ## Scopes
 

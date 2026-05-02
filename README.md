@@ -66,27 +66,39 @@ All share one OV instance, one user, one memory pool. Agent-ID is just a tag.
               │     OpenViking Server        │
               │     (localhost:1933)          │
               │                              │
-              │  viking://resources/         │
-              │    ├── system/               │
-              │    ├── infra/                │
-              │    ├── projects/<slug>/      │
-              │    ├── knowledge/            │
-              │    └── tool-docs/            │
-              │  viking://user/memories/     │
+              │      OpenViking Server       │
+              │      (localhost:1933)        │
+              │                              │
+              │  ┌─ viking://resources/ ──┐  │
+              │  │  system/    infra/     │  │
+              │  │  projects/  knowledge/ │  │
+              │  │  tool-docs/           │  │
+              │  └────────────────────────┘  │
+              │  ┌─ viking://user/ ───────┐  │
+              │  │  memories/ (shared)    │  │
+              │  └────────────────────────┘  │
+              │                              │
+              │  APIs used:                  │
+              │  /search/find  (semantic)    │
+              │  /search/grep  (keyword)     │
+              │  /content/write (capture)    │
+              │  /sessions/extract (AI)      │
+              │  /relations/link (graph)     │
+              │  /stats/memories (monitor)   │
+              │  /pack/export  (backup)      │
               └──────────────────────────────┘
+                        │
+          ┌─────────────┼─────────────────┐
+          ▼             ▼                 ▼
+    ┌──────────┐  ┌──────────┐  ┌──────────────┐
+    │ Cron Jobs│  │ MCP Tools│  │  Next Recall  │
+    │          │  │          │  │              │
+    │ backup   │  │ recall   │  │ Memories     │
+    │ sync     │  │ store    │  │ injected via │
+    │ maintain │  │ search   │  │ <relevant-   │
+    │ stats    │  │ convert  │  │  memories>   │
+    └──────────┘  └──────────┘  └──────────────┘
 ```
-
-## What this adds over Castor6
-
-- **Scoping** — 5 scopes (project, system, infra, knowledge, personal), CWD-based
-- **Hybrid Search** — semantic + grep + RRF merge
-- **Content Merge** — score >0.85 → append to existing memory instead of duplicate
-- **Record Used** — tracks which recalls were useful, ranking improves over time
-- **Auto-Linking** — new memories get linked to active project
-- **Compaction** — regex-based, ~30% fewer tokens
-- **Source Authority** — verified memories rank higher
-- **2 extra MCP tools** — `memory_search` (glob/grep), `convert_to_markdown` (markitdown)
-- **Session-Start Check** — syncs project context to OV on first visit
 
 ## vs Castor6 Original
 
@@ -95,12 +107,13 @@ All share one OV instance, one user, one memory pool. Agent-ID is just a tag.
 | CLIs | Claude Code | + Codex, Gemini, OpenClaw |
 | Search | Semantic only | + grep + RRF merge |
 | Scoping | None | 5 scopes, CWD-based |
-| Dedup | None | Content merge (>0.85) |
-| Ranking | Score only | + source authority + backlinks |
-| Compaction | None | Caveman (~30% reduction) |
+| Dedup | None | Content merge (>0.85 → append) |
+| Ranking | Score only | + source authority + backlink boost |
+| Compaction | None | Caveman (~30% token reduction) |
 | Relations | None | Auto-link to projects |
-| Feedback | None | Record Used |
-| MCP Tools | 4 | 6 |
+| Feedback | None | Record Used tracking |
+| MCP Tools | 4 | 6 (+search, +markitdown) |
+| Session Start | Runtime bootstrap | + project content check + on-demand sync |
 
 ## Install
 

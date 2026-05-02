@@ -75,10 +75,13 @@ json.dump(d,open('$enable','w'),indent=2)
 install_openclaw() {
   if command -v openclaw &>/dev/null; then
     openclaw config set plugins.entries.openviking.enabled true 2>/dev/null
+    openclaw config set plugins.entries.openviking.config.agentId "${OV_AGENT_ID:-openclaw}" 2>/dev/null
     openclaw config set plugins.entries.openviking.config.recallLimit 10 2>/dev/null
     openclaw config set plugins.entries.openviking.hooks.allowConversationAccess true 2>/dev/null
     openclaw config set plugins.slots.contextEngine openviking 2>/dev/null
-    info "openclaw: plugin configured via openclaw config set"
+    info "openclaw: plugin + contextEngine configured"
+    info "  set OV_AGENT_ID env to customize agent tag (default: openclaw)"
+    info "  env vars OPENVIKING_URL + OPENVIKING_API_KEY must be in gateway.service"
   else
     info "openclaw: not installed, skipping. Manual config in config/openclaw-plugin.json"
   fi

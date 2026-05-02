@@ -1,0 +1,13 @@
+{
+  "mode": "local",
+  "agentId": "claude-code",
+  "apiKey": "YOUR_API_KEY_HERE",
+  "account": "YOUR_ACCOUNT",
+  "user": "YOUR_USER",
+  "recallLimit": 10,
+  "captureMode": "semantic",
+  "captureTimeoutMs": 30000,
+  "captureAssistantTurns": false,
+  "logRankingDetails": false,
+  "debug": true
+}

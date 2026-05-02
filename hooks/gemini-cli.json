@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "BeforeAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${extensionPath}/scripts/auto-recall.mjs",
+            "name": "openviking-recall",
+            "description": "Recall relevant memories from OpenViking",
+            "timeout": 8000
+          }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${extensionPath}/scripts/auto-capture.mjs",
+            "name": "openviking-capture",
+            "description": "Capture conversation turns into OpenViking",
+            "timeout": 45000
+          }
+        ]
+      }
+    ]
+  }
+}

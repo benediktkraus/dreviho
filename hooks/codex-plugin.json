@@ -1,0 +1,9 @@
+{
+  "name": "openviking-memory",
+  "version": "0.2.0",
+  "description": "OpenViking long-term memory for Codex CLI — auto-recall and auto-capture with scoping.",
+  "author": {
+    "name": "OpenViking"
+  },
+  "license": "Apache-2.0"
+}

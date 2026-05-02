@@ -1,0 +1,174 @@
+{
+  "project": "openviking-hooks-fork",
+  "version": "0.1.5",
+  "description": "Fork of Castor6/openviking-plugins — production-grade auto-recall + auto-capture hooks for Claude Code, Codex, Gemini CLI, OpenClaw",
+  "generated": "2026-05-02",
+  "files": [
+    {
+      "path": "package.json",
+      "purpose": "NPM manifest. Defines name (claude-code-openviking-memory), version 0.1.5, ESM module type, build/test scripts, dependencies (@modelcontextprotocol/sdk, zod)",
+      "size_bytes": 475,
+      "risk": "low"
+    },
+    {
+      "path": "package-lock.json",
+      "purpose": "NPM lockfile for reproducible installs. Pinned dependency versions for @modelcontextprotocol/sdk and zod",
+      "size_bytes": 41846,
+      "risk": "low"
+    },
+    {
+      "path": "tsconfig.json",
+      "purpose": "TypeScript config. Target ES2022, ESNext modules, strict mode, compiles src/ → servers/",
+      "size_bytes": 319,
+      "risk": "low"
+    },
+    {
+      "path": "hooks/hooks.json",
+      "purpose": "Hook definitions for Claude Code plugin system. Three hooks: SessionStart (bootstrap, 120s), UserPromptSubmit (auto-recall, 8s), Stop (auto-capture, 45s)",
+      "size_bytes": 765,
+      "risk": "medium"
+    },
+    {
+      "path": "scripts/config.mjs",
+      "purpose": "Shared configuration loader. Multi-agent aware (OPENVIKING_AGENT_ID env). Reads client config + server ov.conf, supports local/remote mode, env var expansion, validates all fields with clamping/defaults",
+      "size_bytes": 5913,
+      "risk": "high"
+    },
+    {
+      "path": "scripts/auto-recall.mjs",
+      "purpose": "Auto-recall hook script. Triggered on UserPromptSubmit. Reads user prompt from stdin, performs scoped semantic search + grep hybrid search (RRF merge), ranks results with query-aware scoring (leaf/event/pref/overlap/authority boosts), applies Caveman compaction, injects memories via systemMessage. Tracks recalled URIs for Record Used",
+      "size_bytes": 18348,
+      "risk": "high"
+    },
+    {
+      "path": "scripts/auto-capture.mjs",
+      "purpose": "Auto-capture hook script. Triggered on Stop. Reads transcript, extracts incremental turns (only new since last capture), runs capture decision (semantic or keyword mode), performs Content Merge (dupe check score >0.85 → append), creates OV session → extract → store. Tracks Record Used URIs and Auto-Links to project",
+      "size_bytes": 14034,
+      "risk": "high"
+    },
+    {
+      "path": "scripts/bootstrap-runtime.mjs",
+      "purpose": "SessionStart hook script. Ensures MCP runtime dependencies are installed. Checks project content in OV and triggers on-demand sync via ov-project-sync.sh if missing",
+      "size_bytes": 2043,
+      "risk": "medium"
+    },
+    {
+      "path": "scripts/runtime-common.mjs",
+      "purpose": "Shared runtime management. Handles paths, source state hashing (SHA-256), install state tracking, file sync, directory-based install locking with stale detection, npm ci execution",
+      "size_bytes": 8019,
+      "risk": "medium"
+    },
+    {
+      "path": "scripts/start-memory-server.mjs",
+      "purpose": "MCP server launcher. Ensures runtime is installed, then spawns memory-server.js as child process with signal forwarding (SIGINT/SIGTERM/SIGHUP)",
+      "size_bytes": 1404,
+      "risk": "low"
+    },
+    {
+      "path": "scripts/debug-recall.mjs",
+      "purpose": "Standalone debug script for recall pipeline. Walks through all stages (config, health, search, post-process, ranking, picks, system message) with ANSI-colored verbose output. Usage: node scripts/debug-recall.mjs \"query\"",
+      "size_bytes": 17757,
+      "risk": "low"
+    },
+    {
+      "path": "scripts/debug-capture.mjs",
+      "purpose": "Standalone debug script for capture pipeline. Supports file mode (transcript path) and stdin mode. Shows transcript parsing, incremental state, shouldCapture decisions, session pipeline, extracted memories. Usage: node scripts/debug-capture.mjs /path/to/transcript.jsonl",
+      "size_bytes": 17271,
+      "risk": "low"
+    },
+    {
+      "path": "scripts/debug-log.mjs",
+      "purpose": "Structured JSON Lines debug logger. Zero-cost no-ops when debug disabled. Logs to ~/.openviking/logs/cc-hooks.log with local ISO timestamps",
+      "size_bytes": 2205,
+      "risk": "low"
+    },
+    {
+      "path": "servers/memory-server.js",
+      "purpose": "Compiled MCP server (TypeScript → JS). 6 tools: memory_recall, memory_store, memory_forget, memory_health, memory_search (glob/grep), convert_to_markdown (markitdown). Full OpenVikingClient class with scope resolution, URI normalization, session management",
+      "size_bytes": 28869,
+      "risk": "high"
+    },
+    {
+      "path": "src/memory-server.ts",
+      "purpose": "TypeScript source for MCP server. 4 tools (original Castor6 set): memory_recall, memory_store, memory_forget, memory_health. OpenVikingClient class, memory ranking, query-aware scoring. NOTE: compiled servers/memory-server.js has 2 additional tools (memory_search, convert_to_markdown) not present in .ts source",
+      "size_bytes": 26471,
+      "risk": "high"
+    },
+    {
+      "path": "tests/config.test.mjs",
+      "purpose": "Unit tests for config.mjs using node:test. 5 tests: local mode ov.conf fallback, remote mode, missing ov.conf fallback, env var expansion, remote baseUrl requirement",
+      "size_bytes": 4883,
+      "risk": "low"
+    },
+    {
+      "path": "CLAUDE.md",
+      "purpose": "Project instructions for Claude Code. Documents tech stack, decisions, status, file map",
+      "size_bytes": 1548,
+      "risk": "low"
+    },
+    {
+      "path": "README.md",
+      "purpose": "Main documentation (English). Architecture diagrams, setup guide, configuration reference, hook timeouts, troubleshooting",
+      "size_bytes": 16036,
+      "risk": "low"
+    },
+    {
+      "path": "README_CN.md",
+      "purpose": "Chinese translation of README.md",
+      "size_bytes": 15626,
+      "risk": "low"
+    },
+    {
+      "path": "PRD.md",
+      "purpose": "Product Requirements Document. Vision, features (must/should/could), target audience",
+      "size_bytes": 1023,
+      "risk": "low"
+    },
+    {
+      "path": "MIGRATION.md",
+      "purpose": "Migration guide from legacy claude-memory-plugin (bash+python) to new plugin (MCP+Node.js). Step-by-step instructions, behavior comparison",
+      "size_bytes": 7246,
+      "risk": "low"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "purpose": "Architecture document stub. Marked as pending post-code-review",
+      "size_bytes": 136,
+      "risk": "low"
+    },
+    {
+      "path": "PROGRESS.md",
+      "purpose": "Chronological progress log. Documents all waves of development from initial fork through hybrid search deployment",
+      "size_bytes": 3074,
+      "risk": "low"
+    },
+    {
+      "path": "SESSION-STATE.md",
+      "purpose": "Session working memory. Tracks active goal, last state, open questions, next steps",
+      "size_bytes": 779,
+      "risk": "low"
+    }
+  ],
+  "external_dependencies": [
+    {
+      "path": "/root/.openviking/scope-resolver.mjs",
+      "purpose": "CWD → scope mapping (project/system/infra/knowledge/personal). Source-authority score multipliers. Shared across all CLI hooks",
+      "imported_by": ["scripts/auto-recall.mjs", "scripts/bootstrap-runtime.mjs"]
+    },
+    {
+      "path": "/root/.openviking/compaction.mjs",
+      "purpose": "Caveman compaction — regex-based text compression for recalled memory injection. ~30% token reduction",
+      "imported_by": ["scripts/auto-recall.mjs"]
+    },
+    {
+      "path": "/root/.openviking/scope-config.json",
+      "purpose": "Scope configuration. Defines project base paths, infra patterns, personal projects, scope URIs, source authority tiers, compaction settings",
+      "imported_by": ["(loaded by scope-resolver.mjs)"]
+    }
+  ],
+  "risk_legend": {
+    "high": "Core logic — bugs here break recall/capture/MCP for all clients. Changes require testing across all 4 CLIs",
+    "medium": "Supporting infrastructure — bugs cause degraded behavior (no bootstrap, wrong config) but fail gracefully",
+    "low": "Documentation, debug tools, tests, config — safe to modify"
+  }
+}

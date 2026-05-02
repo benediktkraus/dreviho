@@ -1,0 +1,13 @@
+{
+  "_comment": "Add this to openclaw.json → plugins.entries.openviking via: openclaw config set",
+  "enabled": true,
+  "hooks": {
+    "allowConversationAccess": true
+  },
+  "config": {
+    "agentId": "YOUR_AGENT_ID",
+    "recallLimit": 10,
+    "captureMode": "semantic",
+    "captureAssistantTurns": false
+  }
+}

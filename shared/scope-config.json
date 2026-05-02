@@ -1,0 +1,45 @@
+{
+  "personal_projects": ["your-personal-project-1", "your-personal-project-2"],
+  "infra_patterns": ["docker", "infra", "monitoring", "clawtrol", "heartbeat"],
+  "project_base_paths": [
+    "/mnt/onedrive/Workspace/projects/",
+    "/opt/projects/"
+  ],
+  "scopes": {
+    "system": {
+      "uri_prefix": "viking://resources/system/",
+      "always_active": true,
+      "tier": "holy"
+    },
+    "infra": {
+      "uri_prefix": "viking://resources/infra/",
+      "always_active": false,
+      "tier": "holy"
+    },
+    "knowledge": {
+      "uri_prefix": "viking://resources/knowledge/",
+      "always_active": true,
+      "tier": "volatile",
+      "hint": "Contains: public API directories, research outputs, n8n brain results, scraped articles. Search here for APIs, tools, external resources."
+    },
+    "personal": {
+      "uri_prefix": "viking://user/memories/personal/",
+      "always_active": false,
+      "tier": "holy"
+    }
+  },
+  "source_authority": {
+    "user_verified": 2.0,
+    "user_input": 1.5,
+    "agent_verified": 1.2,
+    "auto_captured": 1.0,
+    "verified_recall_threshold": 5
+  },
+  "compaction": {
+    "enabled": true,
+    "strategy": "caveman",
+    "strip_code_blocks": true,
+    "strip_tables": true,
+    "collapse_whitespace": true
+  }
+}

@@ -8,7 +8,7 @@ openviking-hooks-fork/
 ├── src/              TypeScript source (build-time only)
 ├── hooks/            Hook definitions (read by Claude Code plugin loader)
 ├── tests/            Unit tests
-└── /root/.openviking/  Shared modules (external, used by all 4 CLIs)
+└── ~/.openviking/  Shared modules (external, used by all 4 CLIs)
 ```
 
 ## scripts/ — Hook Scripts
@@ -31,8 +31,8 @@ All scripts are ESM (.mjs), executed by Node.js via the Claude Code hook system 
 auto-recall.mjs
   ├── config.mjs
   ├── debug-log.mjs
-  ├── /root/.openviking/scope-resolver.mjs
-  └── /root/.openviking/compaction.mjs
+  ├── ~/.openviking/scope-resolver.mjs
+  └── ~/.openviking/compaction.mjs
 
 auto-capture.mjs
   ├── config.mjs
@@ -41,7 +41,7 @@ auto-capture.mjs
 bootstrap-runtime.mjs
   ├── runtime-common.mjs
   ├── config.mjs
-  └── /root/.openviking/scope-resolver.mjs
+  └── ~/.openviking/scope-resolver.mjs
 
 start-memory-server.mjs
   └── runtime-common.mjs
@@ -86,7 +86,7 @@ debug-log.mjs
 |------|---------|
 | **config.test.mjs** | 5 unit tests for config.mjs using node:test. Covers local mode with ov.conf, remote mode, missing ov.conf fallback, env var expansion, remote baseUrl validation. |
 
-## Shared Modules at /root/.openviking/
+## Shared Modules at ~/.openviking/
 External modules shared across all 4 CLI hooks (Claude Code, Codex, Gemini CLI, OpenClaw). Single Source of Truth — changes here affect all clients.
 
 | File | Purpose | Imported By |
@@ -97,7 +97,7 @@ External modules shared across all 4 CLI hooks (Claude Code, Codex, Gemini CLI, 
 
 ### Scope Resolution Logic
 ```
-CWD = /mnt/onedrive/Workspace/projects/openclaw/src/
+CWD = ~/projects/my-project/src/
   → system (always)
   → project:openclaw (matched via project_base_paths)
   → infra (active when no project, or CWD matches infra_patterns)

@@ -37,7 +37,7 @@ Both debug scripts copy-paste core logic (ranking, postProcess, shouldCapture, t
 
 ### KI-7: Hardcoded Absolute Paths to Shared Modules
 **Severity:** Low | **Affects:** Portability | **Status:** Accepted
-`auto-recall.mjs` and `bootstrap-runtime.mjs` use ESM static imports from `/root/.openviking/`. ESM static imports cannot use variables — this is a language constraint. For multi-user deployments, set `OPENVIKING_HOME` and use dynamic `import()`. For our single-VPS deployment this is fine. The shared modules (`scope-resolver.mjs`, `compaction.mjs`, `scope-config.json`) are the Single Source of Truth for all 4 CLIs and must live at a fixed path.
+`auto-recall.mjs` and `bootstrap-runtime.mjs` use ESM static imports from `~/.openviking/`. ESM static imports cannot use variables — this is a language constraint. For multi-user deployments, set `OPENVIKING_HOME` and use dynamic `import()`. The shared modules (`scope-resolver.mjs`, `compaction.mjs`, `scope-config.json`) are the Single Source of Truth for all 4 CLIs and must live at a fixed path.
 
 ## Resolved Issues (Historical)
 

@@ -151,17 +151,17 @@
   ],
   "external_dependencies": [
     {
-      "path": "/root/.openviking/scope-resolver.mjs",
+      "path": "~/.openviking/scope-resolver.mjs",
       "purpose": "CWD → scope mapping (project/system/infra/knowledge/personal). Source-authority score multipliers. Shared across all CLI hooks",
       "imported_by": ["scripts/auto-recall.mjs", "scripts/bootstrap-runtime.mjs"]
     },
     {
-      "path": "/root/.openviking/compaction.mjs",
+      "path": "~/.openviking/compaction.mjs",
       "purpose": "Caveman compaction — regex-based text compression for recalled memory injection. ~30% token reduction",
       "imported_by": ["scripts/auto-recall.mjs"]
     },
     {
-      "path": "/root/.openviking/scope-config.json",
+      "path": "~/.openviking/scope-config.json",
       "purpose": "Scope configuration. Defines project base paths, infra patterns, personal projects, scope URIs, source authority tiers, compaction settings",
       "imported_by": ["(loaded by scope-resolver.mjs)"]
     }

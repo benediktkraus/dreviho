@@ -1,0 +1,15 @@
+{
+  "id": "openviking-enhanced",
+  "name": "OpenViking Enhanced Context Engine",
+  "description": "Full-featured OV context engine with hybrid search, 5-scope system, content merge, record used, auto-linking",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "recallLimit": { "type": "number", "default": 10 },
+      "scoreThreshold": { "type": "number", "default": 0.1 },
+      "agentId": { "type": "string", "default": "ralph" }
+    },
+    "additionalProperties": false
+  }
+}

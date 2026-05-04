@@ -1,0 +1,15 @@
+.titan/
+node_modules/
+dist/
+package-lock.json
+*.log
+
+# Local project management (not source)
+ARCHITECTURE.md
+MODULE-MAP.md
+SCAN-INDEX.json
+SESSION-STATE.md
+NEXT-SESSION.md
+MIGRATION.md
+README_CN.md
+concept/

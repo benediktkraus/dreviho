@@ -114,6 +114,10 @@ All share one OV instance, one user, one memory pool. Agent-ID is just a tag.
 | Feedback | None | Record Used tracking |
 | MCP Tools | 4 | 6 (+search, +markitdown) |
 | Session Start | Runtime bootstrap | + project content check + on-demand sync |
+| Stale Dedup | None | >80% URI overlap → short-circuit |
+| Subagent Hooks | None | SubagentStart/Stop (CC), scope isolation |
+| Pre-Compaction | None | PreCompact (CC), PreCompress (Gemini) |
+| OC Plugin | None | Full ContextEngine (8 methods) |
 
 ## Install
 
@@ -142,12 +146,16 @@ Config: `shared/scope-config.json`
 ## Repo structure
 
 ```
-shared/    — scope-resolver, compaction, scope-config (all CLIs import these)
-scripts/   — hook scripts (auto-recall, auto-capture, bootstrap, config, debug)
-servers/   — MCP server (6 tools)
-hooks/     — hook definitions per CLI
-config/    — config templates per CLI (placeholder keys)
-src/       — TypeScript source
+shared/           — scope-resolver, compaction, ranking, scope-config (all CLIs import)
+scripts/          — hook scripts (auto-recall, auto-capture, bootstrap, subagent-scope, pre-compact)
+servers/          — MCP server (6 tools: recall, store, forget, health, search, markitdown)
+hooks/            — hook definitions for Claude Code plugin
+config/           — config templates per CLI (placeholder keys)
+src/              — TypeScript source (MCP server)
+openclaw-plugin/  — OC ContextEngine plugin (openviking-enhanced)
+  src/            — 7 TS files (index, context-engine, ov-client, config, hybrid-search, scope-hints, text-utils)
+specs/            — temporal flow, architecture specs
+adr/              — 5 architecture decision records
 ```
 
 ## Config
@@ -164,23 +172,46 @@ src/       — TypeScript source
 
 Override shared module path: `export OPENVIKING_HOME=/path/to/.openviking`
 
-## OpenClaw
+## OpenClaw Plugin
 
-OC uses OV as a **native context engine** — not through these hooks. OC's plugin has 8 lifecycle methods (bootstrap, assemble, ingest, afterTurn, compact, maintain, subagent spawn/end) that run deeper than hook-based recall/capture.
+OC uses OV as a **native context engine** via `openclaw-plugin/` — a custom ContextEngine plugin (`openviking-enhanced`) that implements all 8 OC lifecycle methods. Not through hooks.
 
-These hooks are for Claude Code, Codex, and Gemini. OC doesn't need them.
+| Method | What it does |
+|--------|-------------|
+| `bootstrap()` | Check project content in OV, trigger sync if missing |
+| `assemble()` | Hybrid search + scoping + ranking + compaction → `systemPromptAddition` |
+| `ingest()` | Content merge (>0.85 → append), session/extract, record used, auto-link |
+| `ingestBatch()` | Loop over ingest for batch turns |
+| `afterTurn()` | Reset recalled URIs after record used reporting |
+| `compact()` | Delegates to OC runtime (`delegateCompactionToRuntime`) |
+| `maintain()` | Strip stale `<relevant-memories>` blocks from transcript |
+| `prepareSubagentSpawn()` | Create OV scope marker for child agent |
+| `onSubagentEnded()` | Cleanup child scope metadata |
 
-OC config (`openclaw config set`):
+Install:
 ```bash
-openclaw config set plugins.entries.openviking.enabled true
-openclaw config set plugins.entries.openviking.config.agentId ralph
-openclaw config set plugins.entries.openviking.config.recallLimit 10
-openclaw config set plugins.slots.contextEngine openviking
+openclaw config set plugins.slots.contextEngine openviking-enhanced
+openclaw config set plugins.entries.openviking.enabled false
 ```
 
 OC env vars (gateway.service): `OPENVIKING_URL`, `OPENVIKING_API_KEY`, `OPENVIKING_AGENT_PREFIX`.
 
-See `config/openclaw-plugin.json` for the full reference.
+## Hook Events per CLI
+
+Beyond recall/capture, these additional hooks are registered where the platform supports them:
+
+| Event | Claude Code | Codex | Gemini | Purpose |
+|-------|-------------|-------|--------|---------|
+| Recall | UserPromptSubmit | UserPromptSubmit | BeforeAgent | Inject memories |
+| Capture | Stop | Stop | AfterAgent | Extract + store |
+| Bootstrap | SessionStart | — | — | Project content check |
+| Subagent Start | SubagentStart | — | — | Create OV scope for child |
+| Subagent Stop | SubagentStop | — | — | Cleanup child scope |
+| Pre-Compaction | PreCompact | — | PreCompress | Log active memories before compaction |
+
+## Stale Recall Dedup
+
+When >80% of recalled URIs are identical to the previous recall, a short "context still active" message is injected instead of the full memory block. Saves ~500 tokens per duplicate turn. Active in all CLIs and the OC plugin.
 
 ## License
 

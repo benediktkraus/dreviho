@@ -39,6 +39,16 @@ Both debug scripts copy-paste core logic (ranking, postProcess, shouldCapture, t
 **Severity:** Low | **Affects:** Portability | **Status:** Accepted
 `auto-recall.mjs` and `bootstrap-runtime.mjs` use ESM static imports from `~/.openviking/`. ESM static imports cannot use variables — this is a language constraint. For multi-user deployments, set `OPENVIKING_HOME` and use dynamic `import()`. The shared modules (`scope-resolver.mjs`, `compaction.mjs`, `scope-config.json`) are the Single Source of Truth for all 4 CLIs and must live at a fixed path.
 
+### KI-8: OC Plugin Not Yet Activated
+**Severity:** Medium | **Affects:** OpenClaw integration | **Status:** Pending
+The "openviking-enhanced" ContextEngine plugin is built and deployed to `/opt/openclaw/plugins/openviking-enhanced/` but not activated. Activation requires: (1) OC update with ContextEngine plugin support, (2) `openclaw config set plugins.contextEngine openviking-enhanced`, (3) gateway restart. Until then, OC continues using the old native plugin without the enhanced hooks.
+**Next:** Wait for OC update, then activate + test.
+
+### KI-9: Codex CLI Has No Subagent/Compaction Hook Events
+**Severity:** Low | **Affects:** Codex CLI hook parity | **Status:** API Limitation
+Codex CLI's hook system does not expose subagent lifecycle events (SubagentStart/Stop) or compaction events (PreCompact). This is an upstream API limitation — Codex hooks only support `on_message` and `on_response` events. Hook parity for subagent and compaction features is therefore impossible on Codex without upstream changes.
+**Workaround:** None. Codex users get recall + capture but not subagent context passing or pre-compaction memory flush.
+
 ## Resolved Issues (Historical)
 
 ### KI-H1: OC Hook execSync Hack (Resolved: replaced with native OC plugin)

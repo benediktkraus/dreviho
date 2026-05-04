@@ -17,7 +17,7 @@
       "uri_prefix": "viking://resources/knowledge/",
       "always_active": true,
       "tier": "volatile",
-      "hint": "Contains: public API directories, research outputs, n8n brain results, scraped articles. Search here for APIs, tools, external resources."
+      "hint": "Contains: API directories, research outputs, external docs. Search here for APIs, tools, external resources."
     },
     "personal": {
       "uri_prefix": "viking://user/memories/personal/",

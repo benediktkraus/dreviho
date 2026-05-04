@@ -5,6 +5,7 @@ package-lock.json
 *.log
 
 # Local project management (not source)
+CLAUDE.md
 ARCHITECTURE.md
 MODULE-MAP.md
 SCAN-INDEX.json

@@ -11,5 +11,8 @@
       "agentId": { "type": "string", "default": "openclaw" }
     },
     "additionalProperties": false
+  },
+  "contracts": {
+    "tools": []
   }
 }

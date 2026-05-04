@@ -440,13 +440,33 @@ async function main() {
   log("picked", { pickedCount: memories.length, uris: memories.map(m => m.uri) });
 
   // Write recalled URIs to temp file for Record Used tracking (auto-capture reads this)
+  const currentUris = memories.map(m => m.uri);
   try {
-    const { writeFileSync, mkdirSync } = await import("node:fs");
+    const { writeFileSync, readFileSync, mkdirSync } = await import("node:fs");
     const { join } = await import("node:path");
     const { tmpdir } = await import("node:os");
     const trackDir = join(tmpdir(), "openviking-cc-recall-tracking");
     mkdirSync(trackDir, { recursive: true });
-    writeFileSync(join(trackDir, "last-recalled-uris.json"), JSON.stringify(memories.map(m => m.uri)));
+
+    // Stale recall dedup: if >80% of URIs are same as last recall, inject short block
+    const urisFile = join(trackDir, "last-recalled-uris.json");
+    try {
+      const prevUris = JSON.parse(readFileSync(urisFile, "utf-8"));
+      if (Array.isArray(prevUris) && prevUris.length > 0) {
+        const prevSet = new Set(prevUris);
+        const overlap = currentUris.filter(u => prevSet.has(u)).length;
+        const overlapRatio = overlap / Math.max(currentUris.length, 1);
+        if (overlapRatio > 0.8 && currentUris.length === prevUris.length) {
+          log("stale_dedup", { overlapRatio, skipped: true });
+          writeFileSync(urisFile, JSON.stringify(currentUris));
+          approve("<relevant-memories>\nPrevious memory context still active (same memories recalled). Active scopes unchanged.\n</relevant-memories>");
+          return;
+        }
+        log("stale_dedup", { overlapRatio, skipped: false });
+      }
+    } catch { /* no previous URIs — first recall */ }
+
+    writeFileSync(urisFile, JSON.stringify(currentUris));
   } catch { /* best effort */ }
 
   // Read full content for leaf memories, apply Caveman compaction

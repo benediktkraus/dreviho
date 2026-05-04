@@ -50,10 +50,7 @@ open-source
 | openclaw-plugin/ | OC ContextEngine Plugin Source (openviking-enhanced) |
 | openclaw-plugin/src/ | Plugin TS: index.ts, context-engine.ts, ov-client.ts, config.ts, hybrid-search.ts, scope-hints.ts, text-utils.ts |
 | openclaw-plugin/dist/ | Compiled Plugin Output |
-| TASK-GUIDE.md | 3 Tasks für OC Plugin Build |
-| PRD.md | Product Requirements |
-| specs/ | Temporal Flow |
-| adr/ | Architecture Decision Records |
+| TASK-GUIDE.md | 3 Tasks für OC Plugin Build (local only, not in repo) |
 
 ## Regeln
 - `openclaw config set` für OC Config — NIEMALS openclaw.json direkt editieren

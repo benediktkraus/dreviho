@@ -20,3 +20,4 @@ KNOWN-ISSUES.md
 PROGRESS.md
 adr/
 specs/
+.internal/

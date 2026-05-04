@@ -23,7 +23,7 @@ function loadScopeConfig() {
     _config = {
       personal_projects: [],
       infra_patterns: [],
-      project_base_paths: ["/mnt/onedrive/Workspace/projects/"],
+      project_base_paths: [],
       scopes: {},
       source_authority: { user_verified: 2.0, user_input: 1.5, agent_verified: 1.2, auto_captured: 1.0, verified_recall_threshold: 5 },
       compaction: { enabled: true, strategy: "caveman" },

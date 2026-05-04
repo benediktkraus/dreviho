@@ -4,7 +4,7 @@
 Fork von Castor6/openviking-plugins. Production-grade Auto-Recall + Auto-Capture Hooks fuer ALLE AI Clients (Claude Code, Codex, Gemini CLI, OpenClaw). Plus: Custom OC ContextEngine Plugin "openviking-enhanced".
 
 ## Projekt-Typ
-internal
+open-source
 
 ## Tech-Stack
 - TypeScript/Node.js (ESM, target ES2022, strict)
@@ -60,4 +60,4 @@ internal
 - Kein execSync — nur execFileSync mit Array-Args
 - Keine hardcoded /root/ Pfade — OPENVIKING_HOME env (default ~/.openviking)
 - Shared Modules sind SSoT — Änderungen betreffen alle 4 CLIs
-- OC Gateway als ROOT: `sudo XDG_RUNTIME_DIR=/run/user/0 openclaw gateway start`
+- OC Gateway: follow your platform's service management for restarts

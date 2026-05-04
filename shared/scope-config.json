@@ -1,10 +1,7 @@
 {
-  "personal_projects": ["your-personal-project-1", "your-personal-project-2"],
-  "infra_patterns": ["docker", "infra", "monitoring", "clawtrol", "heartbeat"],
-  "project_base_paths": [
-    "/mnt/onedrive/Workspace/projects/",
-    "/opt/projects/"
-  ],
+  "personal_projects": [],
+  "infra_patterns": ["docker", "infra", "monitoring"],
+  "project_base_paths": [],
   "scopes": {
     "system": {
       "uri_prefix": "viking://resources/system/",

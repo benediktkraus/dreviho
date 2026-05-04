@@ -62,7 +62,7 @@ install_gemini() {
     python3 -c "
 import json
 d=json.load(open('$enable'))
-d['openviking-memory']={'overrides':['/root/*','/home/*','/mnt/*']}
+d['openviking-memory']={'overrides':['~/*']}
 json.dump(d,open('$enable','w'),indent=2)
 " 2>/dev/null && info "gemini: extension enabled"
   fi

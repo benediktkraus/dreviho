@@ -31,7 +31,8 @@ import { buildScopeHints, buildMemoryBlock } from "./scope-hints.js";
 import { shouldCapture, extractMessageText } from "./text-utils.js";
 
 // Shared modules loaded dynamically (ESM, from OPENVIKING_HOME)
-const SHARED = process.env.OPENVIKING_HOME || `${process.env.HOME || "/root"}/.openviking`;
+import { homedir } from "node:os";
+const SHARED = process.env.OPENVIKING_HOME || `${homedir()}/.openviking`;
 
 let _resolveScopes: ((cwd: string) => { scopes: string[]; targetUris: string[]; projectSlug: string | null }) | null = null;
 let _cavemanCompact: ((text: string) => string) | null = null;

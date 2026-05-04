@@ -5,22 +5,20 @@ Jeder AI Client im Ecosystem (Claude Code, Codex, Gemini CLI, OpenClaw) bekommt 
 
 ## Target Users / Personas
 
-### DER OPERATOR — Benedikt
-- Owner des gesamten AI-Ecosystems (VPS, 4 CLIs, OV Server)
-- Pain: OC hat nur Basic-Retrieval, keine Scopes, kein Hybrid Search — schlechter als die anderen CLIs
-- Goal: Feature-Parität + OC-native Extras ohne manuelles Konfigurieren
-- Tech: Marketing-Background, konfiguriert über CLI-Commands, nicht über Code
+### THE OPERATOR
+- Manages the AI ecosystem (server, 4 CLIs, OV instance)
+- Pain: OC has only basic retrieval — no scoping, no hybrid search, worse than other CLIs
+- Goal: Feature parity + OC-native extras without manual configuration
 
-### DER AGENT — Ralph (OpenClaw)
-- AI Agent der via Telegram, CLI und Cron arbeitet
-- Pain: Bekommt weniger Kontext als Claude Code/Codex/Gemini weil OV Plugin primitiv
-- Goal: Relevante Memories in jedem Turn, automatisches Lernen, Subagent-Awareness
-- Tech: Läuft als OC Gateway Service, nutzt ContextEngine Interface
+### THE AGENT (OpenClaw)
+- AI agent working via messaging, CLI, and cron
+- Pain: Gets less context than Claude Code/Codex/Gemini because OV plugin is primitive
+- Goal: Relevant memories every turn, automatic learning, subagent awareness
 
-### DIE FLEET — Subagents
-- Von Ralph gespawnte Worker (Research, Code Review, Monitoring)
-- Pain: Kein eigener OV-Scope, kein Memory-Isolation, kein Cleanup nach Ende
-- Goal: Isolierter OV-Scope während Laufzeit, Cleanup danach, Parent findet ihre Ergebnisse
+### THE FLEET — Subagents
+- Worker agents spawned by the main agent (research, code review, monitoring)
+- Pain: No own OV scope, no memory isolation, no cleanup after termination
+- Goal: Isolated OV scope during runtime, cleanup after, parent finds their results
 
 ## Features (MoSCoW)
 
@@ -90,8 +88,8 @@ Jeder AI Client im Ecosystem (Claude Code, Codex, Gemini CLI, OpenClaw) bekommt 
 
 ## Constraints
 - Budget: $0 (Open Source, eigene Infra)
-- Timeline: 1 Titan Session (4-6h)
-- Team: Solo (Claude Code + Titan Factory Line)
+- Timeline: 1 build session (4-6h)
+- Team: Solo
 - Tech: TypeScript, OC Plugin SDK, native fetch only
 - Deploy: /opt/openclaw/plugins/openviking-enhanced/
 - Config: NUR via `openclaw config set`, NIEMALS JSON direkt

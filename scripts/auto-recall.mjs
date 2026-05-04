@@ -15,7 +15,8 @@
 
 import { loadConfig } from "./config.mjs";
 import { createLogger } from "./debug-log.mjs";
-const SHARED = process.env.OPENVIKING_HOME || "/root/.openviking";
+import { homedir } from "node:os";
+const SHARED = process.env.OPENVIKING_HOME || `${homedir()}/.openviking`;
 const { resolveScopes, sourceAuthorityMultiplier } = await import(`${SHARED}/scope-resolver.mjs`);
 const { cavemanCompact } = await import(`${SHARED}/compaction.mjs`);
 
@@ -487,10 +488,10 @@ async function main() {
   const { scopes: activeScopes, projectSlug: activeProject } = resolveScopes(cwd);
   const hints = [];
   if (activeProject) hints.push(`Project scope active: ${activeProject} (CLAUDE.md, SESSION-STATE.md, ARCHITECTURE.md synced)`);
-  if (activeScopes.includes("system")) hints.push("System scope: Bootstrap docs (AGENTS.md, TOOLS.md, SOUL.md), learnings, config snapshots");
-  if (activeScopes.includes("infra")) hints.push("Infra scope: Docker, monitoring, VPS config, heartbeat");
-  if (activeScopes.includes("knowledge")) hints.push("Knowledge scope: Public API directories, research outputs, n8n brain results, external docs. Use memory_search for targeted lookups.");
-  if (activeScopes.includes("personal")) hints.push("Personal scope: Life-admin (Wohnung, Versicherung, private Termine)");
+  if (activeScopes.includes("system")) hints.push("System scope: Bootstrap docs, learnings, config snapshots");
+  if (activeScopes.includes("infra")) hints.push("Infra scope: Infrastructure config, monitoring, deployment");
+  if (activeScopes.includes("knowledge")) hints.push("Knowledge scope: API directories, research outputs, external docs. Use memory_search for targeted lookups.");
+  if (activeScopes.includes("personal")) hints.push("Personal scope: Personal projects and private data");
   const scopeHints = hints.length > 0 ? "\nActive scopes: " + hints.join(" | ") : "";
 
   const memoryContext =

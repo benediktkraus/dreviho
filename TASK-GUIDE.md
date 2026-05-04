@@ -21,7 +21,7 @@ T-001 [Scaffold + OV Client + Plugin Entry]
   └─► T-002 [Core Methods: assemble + ingest + bootstrap]
         └─► T-003 [Lifecycle + Security + Deploy]
 ```
-3 Tasks, 1 Titan Session.
+3 Tasks, sequential.
 
 ## Tasks
 
@@ -244,7 +244,7 @@ INSTALL:
 
 | Wave | Tasks | Effort | Titan Model |
 |------|-------|--------|-------------|
-| 1 | T-001 Scaffold | 1-2h | Codex 5.5 |
-| 2 | T-002 Core Methods | 2-3h | Opus (port-heavy) |
-| 3 | T-003 Lifecycle + Deploy | 1-2h | Codex 5.5 |
-| **Total** | **3 tasks** | **4-6h** | **1 Titan Session** |
+| 1 | T-001 Scaffold | 1-2h | — |
+| 2 | T-002 Core Methods | 2-3h | — |
+| 3 | T-003 Lifecycle + Deploy | 1-2h | — |
+| **Total** | **3 tasks** | **4-6h** | — |

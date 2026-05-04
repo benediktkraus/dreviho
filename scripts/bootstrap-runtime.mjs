@@ -3,7 +3,8 @@ import {
   ensureRuntimeInstalled,
   getRuntimePaths,
 } from "./runtime-common.mjs";
-const SHARED = process.env.OPENVIKING_HOME || "/root/.openviking";
+import { homedir } from "node:os";
+const SHARED = process.env.OPENVIKING_HOME || `${homedir()}/.openviking`;
 const { resolveScopes } = await import(`${SHARED}/scope-resolver.mjs`);
 import { loadConfig } from "./config.mjs";
 
@@ -33,7 +34,10 @@ async function checkProjectContent() {
 
     // Project not in OV yet — trigger on-demand sync
     const { execFileSync } = await import("node:child_process");
-    execFileSync("/mnt/onedrive/Workspace/scripts/infra/ov-project-sync.sh", [projectSlug], {
+    const syncScript = process.env.OPENVIKING_PROJECT_SYNC || `${SHARED}/scripts/ov-project-sync.sh`;
+    const { existsSync } = await import("node:fs");
+    if (!existsSync(syncScript)) return;
+    execFileSync(syncScript, [projectSlug], {
       timeout: 30000,
       stdio: "ignore",
     });

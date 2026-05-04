@@ -8,7 +8,7 @@
     "properties": {
       "recallLimit": { "type": "number", "default": 10 },
       "scoreThreshold": { "type": "number", "default": 0.1 },
-      "agentId": { "type": "string", "default": "ralph" }
+      "agentId": { "type": "string", "default": "openclaw" }
     },
     "additionalProperties": false
   }

@@ -15,16 +15,16 @@ export function buildScopeHints(scopeInfo: ScopeInfo): string {
     hints.push(`Project scope active: ${scopeInfo.projectSlug} (CLAUDE.md, SESSION-STATE.md, ARCHITECTURE.md synced)`);
   }
   if (scopeInfo.scopes.includes("system")) {
-    hints.push("System scope: Bootstrap docs (AGENTS.md, TOOLS.md, SOUL.md), learnings, config snapshots");
+    hints.push("System scope: Bootstrap docs, learnings, config snapshots");
   }
   if (scopeInfo.scopes.includes("infra")) {
-    hints.push("Infra scope: Docker, monitoring, VPS config, heartbeat");
+    hints.push("Infra scope: Infrastructure config, monitoring, deployment");
   }
   if (scopeInfo.scopes.includes("knowledge")) {
-    hints.push("Knowledge scope: Public API directories, research outputs, n8n brain results, external docs. Use memory_search for targeted lookups.");
+    hints.push("Knowledge scope: API directories, research outputs, external docs. Use memory_search for targeted lookups.");
   }
   if (scopeInfo.scopes.includes("personal")) {
-    hints.push("Personal scope: Life-admin (Wohnung, Versicherung, private Termine)");
+    hints.push("Personal scope: Personal projects and private data");
   }
 
   return hints.length > 0 ? "\nActive scopes: " + hints.join(" | ") : "";

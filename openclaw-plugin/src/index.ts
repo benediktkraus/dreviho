@@ -19,8 +19,8 @@ export default definePluginEntry({
     });
     if (result.ok) {
       api.logger.info("openviking-enhanced: context engine registered");
-    } else {
-      api.logger.error(`openviking-enhanced: registration failed — already owned by ${result.existingOwner}`);
     }
+    // Re-registration failures are normal — OC re-inits plugins on agent heartbeats.
+    // First registration wins, subsequent ones are correctly rejected. Not an error.
   },
 });

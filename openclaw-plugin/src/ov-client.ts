@@ -47,10 +47,12 @@ export class OVClient {
     return result !== null;
   }
 
-  async searchFind(query: string, targetUri: string, limit: number): Promise<OVSearchResult[]> {
+  async searchFind(query: string, targetUri: string, limit: number, since?: string): Promise<OVSearchResult[]> {
+    const body: Record<string, unknown> = { query, target_uri: targetUri, limit, score_threshold: 0, include_provenance: true };
+    if (since) { body.since = since; body.time_field = "created_at"; }
     const result = await this.fetchJSON<{ memories?: OVSearchResult[] }>("/api/v1/search/find", {
       method: "POST",
-      body: JSON.stringify({ query, target_uri: targetUri, limit, score_threshold: 0 }),
+      body: JSON.stringify(body),
     });
     return result?.memories ?? [];
   }

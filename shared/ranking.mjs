@@ -3,6 +3,33 @@
  * Single Source of Truth. Do NOT duplicate this logic elsewhere.
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { temporalDecayFactor, isEvergreen, recordSeenBatch, flushCache } from "./decay-cache.mjs";
+
+// Default config — overridden by scope-config.json at runtime
+let _decayConfig = { enabled: true, halfLifeDays: 30, evergreen: ["viking://resources/"] };
+let _mmrConfig = { enabled: true, lambda: 0.7 };
+let _configLoaded = false;
+
+export function loadRankingConfig(config) {
+  if (config?.decay) _decayConfig = { ..._decayConfig, ...config.decay };
+  if (config?.mmr) _mmrConfig = { ..._mmrConfig, ...config.mmr };
+  _configLoaded = true;
+}
+
+function ensureConfig() {
+  if (_configLoaded) return;
+  try {
+    const cfgPath = join(process.env.OPENVIKING_HOME || `${homedir()}/.openviking`, "scope-config.json");
+    const raw = JSON.parse(readFileSync(cfgPath, "utf-8"));
+    loadRankingConfig(raw);
+  } catch {
+    _configLoaded = true; // use defaults, don't retry
+  }
+}
+
 const PREFERENCE_QUERY_RE = /prefer|preference|favorite|favourite|like/i;
 const TEMPORAL_QUERY_RE = /when|what time|date|day|month|year|yesterday|today|tomorrow|last|next/i;
 const QUERY_TOKEN_RE = /[a-z0-9\u4e00-\u9fa5]{2,}/gi;
@@ -51,11 +78,18 @@ export function getRankingBreakdown(item, profile, authorityMultiplier = 1.0) {
   const prefBoost = profile.wantsPreference && (cat === "preferences" || uri.includes("/preferences/")) ? 0.08 : 0;
   const overlapBoost = lexicalOverlapBoost(profile.tokens, `${item.uri} ${abstract}`);
   const authorityBoost = base * (authorityMultiplier - 1.0);
+  // Temporal decay: reduce score for old memories, skip evergreen URIs
+  let decayFactor = 1.0;
+  if (_decayConfig.enabled && item.uri && !isEvergreen(item.uri, _decayConfig.evergreen)) {
+    decayFactor = temporalDecayFactor(item.uri, _decayConfig.halfLifeDays);
+  }
+  const rawScore = base + leafBoost + eventBoost + prefBoost + overlapBoost + authorityBoost;
   return {
     baseScore: base,
     leafBoost, eventBoost, prefBoost, overlapBoost,
     authorityBoost, authorityMultiplier,
-    finalScore: base + leafBoost + eventBoost + prefBoost + overlapBoost + authorityBoost,
+    decayFactor,
+    finalScore: rawScore * decayFactor,
   };
 }
 
@@ -87,8 +121,75 @@ export function postProcess(items, limit, threshold) {
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// MMR Diversity Re-Ranking — reduces near-duplicate results
+// ---------------------------------------------------------------------------
+
+function tokenize(text) {
+  if (!text) return new Set();
+  return new Set(text.toLowerCase().match(/[a-z0-9\u4e00-\u9fa5]{2,}/gi) || []);
+}
+
+function jaccardSimilarity(setA, setB) {
+  if (setA.size === 0 && setB.size === 0) return 1;
+  if (setA.size === 0 || setB.size === 0) return 0;
+  let intersection = 0;
+  for (const t of setA) if (setB.has(t)) intersection++;
+  return intersection / (setA.size + setB.size - intersection);
+}
+
+export function mmrFilter(items, lambda = 0.7) {
+  if (items.length <= 1) return items;
+  const tokenSets = items.map(item =>
+    tokenize(safeStr(item.abstract || item.overview) + " " + (item.uri || ""))
+  );
+  const selected = [0];
+  const remaining = new Set(items.map((_, i) => i));
+  remaining.delete(0);
+  while (selected.length < items.length && remaining.size > 0) {
+    let bestIdx = -1;
+    let bestMmr = -Infinity;
+    for (const idx of remaining) {
+      const relevance = clampScore(items[idx].score);
+      let maxSim = 0;
+      for (const selIdx of selected) {
+        const sim = jaccardSimilarity(tokenSets[idx], tokenSets[selIdx]);
+        if (sim > maxSim) maxSim = sim;
+      }
+      const mmrScore = lambda * relevance - (1 - lambda) * maxSim;
+      if (mmrScore > bestMmr) { bestMmr = mmrScore; bestIdx = idx; }
+    }
+    if (bestIdx === -1) break;
+    selected.push(bestIdx);
+    remaining.delete(bestIdx);
+  }
+  return selected.map(i => items[i]);
+}
+
+// ---------------------------------------------------------------------------
+// Citations — source annotation for recalled memories
+// ---------------------------------------------------------------------------
+
+export function formatCitation(item) {
+  const uri = item.uri || "unknown";
+  const type = item.context_type || item.category || "memory";
+  const score = typeof item.score === "number" ? item.score.toFixed(2) : "?";
+  return `[Source: ${uri} | ${type} | score:${score}]`;
+}
+
+// ---------------------------------------------------------------------------
+// pickMemories — select top K with MMR diversity
+// ---------------------------------------------------------------------------
+
 export function pickMemories(items, limit, queryText, authorityFn = () => 1.0) {
   if (items.length === 0 || limit <= 0) return [];
+  ensureConfig();
+
+  // Record all candidate URIs in decay cache (first-seen tracking)
+  if (_decayConfig.enabled) {
+    recordSeenBatch(items.map(i => i.uri).filter(Boolean));
+  }
+
   const profile = buildQueryProfile(queryText);
   const sorted = [...items].sort((a, b) => {
     const aScore = getRankingBreakdown(a, profile, authorityFn(a)).finalScore;
@@ -96,14 +197,23 @@ export function pickMemories(items, limit, queryText, authorityFn = () => 1.0) {
     return bScore - aScore;
   });
   const deduped = dedupeByAbstract(sorted);
-  const leaves = deduped.filter(m => m.level === 2 || (m.uri || "").endsWith(".md"));
-  if (leaves.length >= limit) return leaves.slice(0, limit);
+
+  // Apply MMR diversity filter before final selection
+  const lambda = _mmrConfig.enabled ? _mmrConfig.lambda : 1.0;
+  const diversified = lambda < 1.0 ? mmrFilter(deduped, lambda) : deduped;
+
+  const leaves = diversified.filter(m => m.level === 2 || (m.uri || "").endsWith(".md"));
+  if (leaves.length >= limit) {
+    flushCache();
+    return leaves.slice(0, limit);
+  }
   const picked = [...leaves];
   const used = new Set(picked.map(m => m.uri));
-  for (const item of deduped) {
+  for (const item of diversified) {
     if (picked.length >= limit) break;
     if (used.has(item.uri)) continue;
     picked.push(item);
   }
+  flushCache();
   return picked;
 }

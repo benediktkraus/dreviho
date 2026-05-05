@@ -15,10 +15,24 @@
 
 import { loadConfig } from "./config.mjs";
 import { createLogger } from "./debug-log.mjs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { join } from "node:path";
 const SHARED = process.env.OPENVIKING_HOME || `${homedir()}/.openviking`;
 const { resolveScopes, sourceAuthorityMultiplier } = await import(`${SHARED}/scope-resolver.mjs`);
 const { cavemanCompact } = await import(`${SHARED}/compaction.mjs`);
+const { temporalDecayFactor, isEvergreen, recordSeenBatch, flushCache } = await import(`${SHARED}/decay-cache.mjs`);
+
+// Load scope-config for MMR + Decay settings
+let _scopeConfig = {};
+try {
+  _scopeConfig = JSON.parse(readFileSync(join(SHARED, "scope-config.json"), "utf-8"));
+} catch { /* use defaults */ }
+const _mmrLambda = _scopeConfig.mmr?.lambda ?? 0.7;
+const _mmrEnabled = _scopeConfig.mmr?.enabled !== false;
+const _decayEnabled = _scopeConfig.decay?.enabled !== false;
+const _decayHalfLife = _scopeConfig.decay?.halfLifeDays ?? 30;
+const _decayEvergreen = _scopeConfig.decay?.evergreen ?? ["viking://resources/"];
 
 const cfg = loadConfig();
 const { log, logError } = createLogger("auto-recall");
@@ -105,18 +119,20 @@ function getRankingBreakdown(item, profile) {
   const eventBoost = profile.wantsTemporal && (cat === "events" || uri.includes("/events/")) ? 0.1 : 0;
   const prefBoost = profile.wantsPreference && (cat === "preferences" || uri.includes("/preferences/")) ? 0.08 : 0;
   const overlapBoost = lexicalOverlapBoost(profile.tokens, `${item.uri} ${abstract}`);
-  // Source-authority: multiply base score by trust tier
   const authorityMul = sourceAuthorityMultiplier(item);
-  const authorityBoost = base * (authorityMul - 1.0); // additive equivalent
+  const authorityBoost = base * (authorityMul - 1.0);
+  // Temporal decay: reduce score for old memories, skip evergreen URIs
+  let decayFactor = 1.0;
+  if (_decayEnabled && item.uri && !isEvergreen(item.uri, _decayEvergreen)) {
+    decayFactor = temporalDecayFactor(item.uri, _decayHalfLife);
+  }
+  const rawScore = base + leafBoost + eventBoost + prefBoost + overlapBoost + authorityBoost;
   return {
     baseScore: base,
-    leafBoost,
-    eventBoost,
-    prefBoost,
-    overlapBoost,
-    authorityBoost,
-    authorityMultiplier: authorityMul,
-    finalScore: base + leafBoost + eventBoost + prefBoost + overlapBoost + authorityBoost,
+    leafBoost, eventBoost, prefBoost, overlapBoost,
+    authorityBoost, authorityMultiplier: authorityMul,
+    decayFactor,
+    finalScore: rawScore * decayFactor,
   };
 }
 
@@ -135,20 +151,74 @@ function dedupeByAbstract(items) {
   });
 }
 
+// MMR Diversity — reduces near-duplicate results
+function tokenize(text) {
+  if (!text) return new Set();
+  return new Set(text.toLowerCase().match(/[a-z0-9\u4e00-\u9fa5]{2,}/gi) || []);
+}
+function jaccardSimilarity(setA, setB) {
+  if (setA.size === 0 && setB.size === 0) return 1;
+  if (setA.size === 0 || setB.size === 0) return 0;
+  let intersection = 0;
+  for (const t of setA) if (setB.has(t)) intersection++;
+  return intersection / (setA.size + setB.size - intersection);
+}
+function mmrFilter(items, lambda = 0.7) {
+  if (items.length <= 1) return items;
+  const tokenSets = items.map(item =>
+    tokenize((item.abstract || item.overview || "") + " " + (item.uri || ""))
+  );
+  const selected = [0];
+  const remaining = new Set(items.map((_, i) => i));
+  remaining.delete(0);
+  while (selected.length < items.length && remaining.size > 0) {
+    let bestIdx = -1;
+    let bestMmr = -Infinity;
+    for (const idx of remaining) {
+      const relevance = clampScore(items[idx].score);
+      let maxSim = 0;
+      for (const selIdx of selected) {
+        const sim = jaccardSimilarity(tokenSets[idx], tokenSets[selIdx]);
+        if (sim > maxSim) maxSim = sim;
+      }
+      const mmrScore = lambda * relevance - (1 - lambda) * maxSim;
+      if (mmrScore > bestMmr) { bestMmr = mmrScore; bestIdx = idx; }
+    }
+    if (bestIdx === -1) break;
+    selected.push(bestIdx);
+    remaining.delete(bestIdx);
+  }
+  return selected.map(i => items[i]);
+}
+
+// Citations
+function formatCitation(item) {
+  const uri = item.uri || "unknown";
+  const type = item.context_type || item.category || "memory";
+  const score = typeof item.score === "number" ? item.score.toFixed(2) : "?";
+  return `[Source: ${uri} | ${type} | score:${score}]`;
+}
+
 function pickMemories(items, limit, queryText) {
   if (items.length === 0 || limit <= 0) return [];
+  // Record all candidate URIs in decay cache
+  if (_decayEnabled) recordSeenBatch(items.map(i => i.uri).filter(Boolean));
   const profile = buildQueryProfile(queryText);
   const sorted = [...items].sort((a, b) => rankForInjection(b, profile) - rankForInjection(a, profile));
   const deduped = dedupeByAbstract(sorted);
-  const leaves = deduped.filter(m => m.level === 2 || m.uri.endsWith(".md"));
-  if (leaves.length >= limit) return leaves.slice(0, limit);
+  // MMR diversity (config-driven lambda)
+  const lambda = _mmrEnabled ? _mmrLambda : 1.0;
+  const diversified = lambda < 1.0 ? mmrFilter(deduped, lambda) : deduped;
+  const leaves = diversified.filter(m => m.level === 2 || m.uri.endsWith(".md"));
+  if (leaves.length >= limit) { flushCache(); return leaves.slice(0, limit); }
   const picked = [...leaves];
   const used = new Set(picked.map(m => m.uri));
-  for (const item of deduped) {
+  for (const item of diversified) {
     if (picked.length >= limit) break;
     if (used.has(item.uri)) continue;
     picked.push(item);
   }
+  flushCache();
   return picked;
 }
 
@@ -229,11 +299,13 @@ async function resolveTargetUri(targetUri) {
 // Search OpenViking
 // ---------------------------------------------------------------------------
 
-async function searchScope(query, targetUri, limit) {
+async function searchScope(query, targetUri, limit, since = null) {
   const resolvedUri = await resolveTargetUri(targetUri);
+  const body = { query, target_uri: resolvedUri, limit, score_threshold: 0, include_provenance: true };
+  if (since) { body.since = since; body.time_field = "created_at"; }
   const result = await fetchJSON("/api/v1/search/find", {
     method: "POST",
-    body: JSON.stringify({ query, target_uri: resolvedUri, limit, score_threshold: 0 }),
+    body: JSON.stringify(body),
   });
   return result?.memories || [];
 }
@@ -305,12 +377,15 @@ async function searchScoped(query, limit) {
   log("scope_resolved", { cwd, scopes, targetUris, projectSlug });
 
   // Semantic search across all scoped target URIs
-  const searchPromises = targetUris.map(uri =>
-    searchScope(query, uri, limit).then(results => {
-      log("search_complete", { scope: uri, rawCount: results.length, topScores: results.slice(0, 3).map(m => m.score) });
+  // Apply time filter for memories (not for resources — evergreen)
+  const searchPromises = targetUris.map(uri => {
+    const isMemory = uri.includes("/memories/") || uri.includes("/user/");
+    const since = isMemory ? "90d" : null;
+    return searchScope(query, uri, limit, since).then(results => {
+      log("search_complete", { scope: uri, rawCount: results.length, since, topScores: results.slice(0, 3).map(m => m.score) });
       return results;
-    })
-  );
+    });
+  });
 
   // Grep search in parallel (keyword-based)
   const keywords = extractKeywords(query);
@@ -470,16 +545,17 @@ async function main() {
     writeFileSync(urisFile, JSON.stringify(currentUris));
   } catch { /* best effort */ }
 
-  // Read full content for leaf memories, apply Caveman compaction
+  // Read full content for leaf memories, apply Caveman compaction + citations
   const lines = await Promise.all(
     memories.map(async (item) => {
       const label = item.category || item.context_type || "memory";
+      const citation = formatCitation(item);
       if (item.level === 2) {
         const content = await readMemoryContent(item.uri);
-        if (content) return `- [${label}] ${cavemanCompact(content)}`;
+        if (content) return `- [${label}] ${cavemanCompact(content)}\n  ${citation}`;
       }
       const fallback = (item.abstract || item.overview || item.uri).trim();
-      return `- [${label}] ${cavemanCompact(fallback)}`;
+      return `- [${label}] ${cavemanCompact(fallback)}\n  ${citation}`;
     })
   );
 

@@ -56,6 +56,7 @@ export function rrfMerge(semanticResults: OVSearchResult[], grepResults: OVSearc
 
 /**
  * Full scoped search: semantic across all target URIs + grep + RRF merge + URI dedup.
+ * Memory URIs get a `since` time filter; resource URIs are evergreen (no filter).
  */
 export async function searchScoped(
   client: OVClient,
@@ -64,7 +65,11 @@ export async function searchScoped(
   limit: number,
 ): Promise<OVSearchResult[]> {
   // Semantic search across all scoped target URIs
-  const searchPromises = targetUris.map(uri => client.searchFind(query, uri, limit));
+  // Apply time filter for memories, not resources
+  const searchPromises = targetUris.map(uri => {
+    const isMemory = uri.includes("/memories/") || uri.includes("/user/");
+    return client.searchFind(query, uri, limit, isMemory ? "90d" : undefined);
+  });
 
   // Grep search in parallel
   const keywords = extractKeywords(query);

@@ -41,6 +41,7 @@ let _pickMemories: ((items: OVSearchResult[], limit: number, queryText: string, 
 let _postProcess: ((items: OVSearchResult[], limit: number, threshold: number) => OVSearchResult[]) | null = null;
 let _getRankingBreakdown: ((item: OVSearchResult, profile: unknown, authorityMultiplier?: number) => { finalScore: number }) | null = null;
 let _buildQueryProfile: ((query: string) => unknown) | null = null;
+let _formatCitation: ((item: OVSearchResult) => string) | null = null;
 
 async function loadSharedModules(): Promise<void> {
   if (_resolveScopes) return; // already loaded
@@ -57,6 +58,7 @@ async function loadSharedModules(): Promise<void> {
     _postProcess = ranking.postProcess;
     _getRankingBreakdown = ranking.getRankingBreakdown;
     _buildQueryProfile = ranking.buildQueryProfile;
+    _formatCitation = ranking.formatCitation;
   } catch {
     // Graceful degradation — search without scoping/ranking
   }
@@ -190,17 +192,20 @@ export class OpenVikingContextEngine implements ContextEngine {
     }
     this.prevRecalledUris = this.recalledUris;
 
-    // Read full content for leaf memories, apply Caveman compaction
+    // Read full content for leaf memories, apply Caveman compaction + citations
     const compact = _cavemanCompact || ((t: string) => t);
+    const citationsOn = params.citationsMode !== "off";
+    const cite = _formatCitation || ((item: OVSearchResult) => `[Source: ${item.uri}]`);
     const lines = await Promise.all(
       memories.map(async (item) => {
         const label = item.category || item.context_type || "memory";
+        const suffix = citationsOn ? `\n  ${cite(item)}` : "";
         if (item.level === 2) {
           const content = await this.client.contentRead(item.uri);
-          if (content) return `- [${label}] ${compact(content)}`;
+          if (content) return `- [${label}] ${compact(content)}${suffix}`;
         }
         const fallback = (item.abstract || item.overview || item.uri || "").trim();
-        return `- [${label}] ${compact(fallback)}`;
+        return `- [${label}] ${compact(fallback)}${suffix}`;
       }),
     );
 

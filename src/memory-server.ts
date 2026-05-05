@@ -206,7 +206,7 @@ class OpenVikingClient {
     private readonly timeoutMs: number,
   ) {}
 
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
@@ -325,17 +325,20 @@ class OpenVikingClient {
 
   async find(
     query: string,
-    options: { targetUri: string; limit: number; scoreThreshold?: number },
+    options: { targetUri: string; limit: number; scoreThreshold?: number; since?: string },
   ): Promise<FindResult> {
     const normalizedTargetUri = await this.normalizeTargetUri(options.targetUri);
+    const body: Record<string, unknown> = {
+      query,
+      target_uri: normalizedTargetUri,
+      limit: options.limit,
+      score_threshold: options.scoreThreshold,
+      include_provenance: true,
+    };
+    if (options.since) { body.since = options.since; body.time_field = "created_at"; }
     return this.request<FindResult>("/api/v1/search/find", {
       method: "POST",
-      body: JSON.stringify({
-        query,
-        target_uri: normalizedTargetUri,
-        limit: options.limit,
-        score_threshold: options.scoreThreshold,
-      }),
+      body: JSON.stringify(body),
     });
   }
 
@@ -468,6 +471,54 @@ function rankForInjection(item: FindResultItem, query: ReturnType<typeof buildQu
   return baseScore + leafBoost + eventBoost + prefBoost + overlapBoost;
 }
 
+// MMR Diversity — Jaccard-based near-duplicate reduction
+function tokenize(text: string): Set<string> {
+  if (!text) return new Set();
+  return new Set(text.toLowerCase().match(/[a-z0-9\u4e00-\u9fa5]{2,}/gi) ?? []);
+}
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 1;
+  if (a.size === 0 || b.size === 0) return 0;
+  let intersection = 0;
+  for (const t of a) if (b.has(t)) intersection++;
+  return intersection / (a.size + b.size - intersection);
+}
+function mmrFilter(items: FindResultItem[], lambda = 0.7): FindResultItem[] {
+  if (items.length <= 1) return items;
+  const tokenSets = items.map(item =>
+    tokenize((item.abstract ?? item.overview ?? "") + " " + item.uri)
+  );
+  const selected = [0];
+  const remaining = new Set(items.map((_, i) => i));
+  remaining.delete(0);
+  while (selected.length < items.length && remaining.size > 0) {
+    let bestIdx = -1;
+    let bestMmr = -Infinity;
+    for (const idx of remaining) {
+      const relevance = clampScore(items[idx]!.score);
+      let maxSim = 0;
+      for (const selIdx of selected) {
+        const sim = jaccardSimilarity(tokenSets[idx]!, tokenSets[selIdx]!);
+        if (sim > maxSim) maxSim = sim;
+      }
+      const mmrScore = lambda * relevance - (1 - lambda) * maxSim;
+      if (mmrScore > bestMmr) { bestMmr = mmrScore; bestIdx = idx; }
+    }
+    if (bestIdx === -1) break;
+    selected.push(bestIdx);
+    remaining.delete(bestIdx);
+  }
+  return selected.map(i => items[i]!);
+}
+
+// Citations
+function formatCitation(item: FindResultItem): string {
+  const uri = item.uri || "unknown";
+  const type = item.category ?? "memory";
+  const score = typeof item.score === "number" ? item.score.toFixed(2) : "?";
+  return `[Source: ${uri} | ${type} | score:${score}]`;
+}
+
 function pickMemoriesForInjection(items: FindResultItem[], limit: number, queryText: string): FindResultItem[] {
   if (items.length === 0 || limit <= 0) return [];
   const query = buildQueryProfile(queryText);
@@ -482,12 +533,15 @@ function pickMemoriesForInjection(items: FindResultItem[], limit: number, queryT
     deduped.push(item);
   }
 
-  const leaves = deduped.filter((item) => item.level === 2);
+  // Apply MMR diversity filter
+  const diversified = mmrFilter(deduped, 0.7);
+
+  const leaves = diversified.filter((item) => item.level === 2);
   if (leaves.length >= limit) return leaves.slice(0, limit);
 
   const picked = [...leaves];
   const used = new Set(leaves.map((item) => item.uri));
-  for (const item of deduped) {
+  for (const item of diversified) {
     if (picked.length >= limit) break;
     if (used.has(item.uri)) continue;
     picked.push(item);
@@ -505,8 +559,8 @@ async function searchBothScopes(
   limit: number,
 ): Promise<FindResultItem[]> {
   const [userSettled, agentSettled] = await Promise.allSettled([
-    client.find(query, { targetUri: "viking://user/memories", limit, scoreThreshold: 0 }),
-    client.find(query, { targetUri: "viking://agent/memories", limit, scoreThreshold: 0 }),
+    client.find(query, { targetUri: "viking://user/memories", limit, scoreThreshold: 0, since: "90d" }),
+    client.find(query, { targetUri: "viking://agent/memories", limit, scoreThreshold: 0, since: "90d" }),
   ]);
 
   const userResult = userSettled.status === "fulfilled" ? userSettled.value : { memories: [] };
@@ -560,23 +614,24 @@ server.tool(
       return { content: [{ type: "text" as const, text: "No relevant memories found in OpenViking." }] };
     }
 
-    // Read full content for leaf memories
+    // Read full content for leaf memories + add citations
     const lines = await Promise.all(
       memories.map(async (item) => {
+        const citation = formatCitation(item);
         if (item.level === 2) {
           try {
             const content = await client.read(item.uri);
-            if (content?.trim()) return `- [${item.category ?? "memory"}] ${content.trim()}`;
+            if (content?.trim()) return `- [${item.category ?? "memory"}] ${content.trim()}\n  ${citation}`;
           } catch { /* fallback */ }
         }
-        return `- [${item.category ?? "memory"}] ${item.abstract ?? item.uri}`;
+        return `- [${item.category ?? "memory"}] ${item.abstract ?? item.uri}\n  ${citation}`;
       }),
     );
 
     return {
       content: [{
         type: "text" as const,
-        text: `Found ${memories.length} relevant memories:\n\n${lines.join("\n")}\n\n---\n${formatMemoryLines(memories)}`,
+        text: `Found ${memories.length} relevant memories:\n\n${lines.join("\n")}`,
       }],
     };
   },

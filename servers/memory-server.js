@@ -126,8 +126,6 @@ const config = {
         : `http://127.0.0.1:${clampPort(serverCfg.port)}`,
     apiKey: resolveString(clientFile.apiKey, "") || (mode === "local" ? resolveString(serverCfg.root_api_key, "") : ""),
     agentId: resolveString(clientFile.agentId, "claude-code"),
-    account: resolveString(clientFile.account, ""),
-    user: resolveString(clientFile.user, ""),
     timeoutMs: Math.max(1000, Math.floor(num(clientFile.timeoutMs, 15000))),
     recallLimit: Math.max(1, Math.floor(num(clientFile.recallLimit, 6))),
     scoreThreshold: Math.min(1, Math.max(0, num(clientFile.scoreThreshold, 0.01))),
@@ -151,17 +149,13 @@ class OpenVikingClient {
     baseUrl;
     apiKey;
     agentId;
-    account;
-    user;
     timeoutMs;
     resolvedSpaceByScope = {};
     runtimeIdentity = null;
-    constructor(baseUrl, apiKey, agentId, account, user, timeoutMs) {
+    constructor(baseUrl, apiKey, agentId, timeoutMs) {
         this.baseUrl = baseUrl;
         this.apiKey = apiKey;
         this.agentId = agentId;
-        this.account = account;
-        this.user = user;
         this.timeoutMs = timeoutMs;
     }
     async request(path, init = {}) {
@@ -173,10 +167,6 @@ class OpenVikingClient {
                 headers.set("X-API-Key", this.apiKey);
             if (this.agentId)
                 headers.set("X-OpenViking-Agent", this.agentId);
-            if (this.account)
-                headers.set("X-OpenViking-Account", this.account);
-            if (this.user)
-                headers.set("X-OpenViking-User", this.user);
             if (init.body && !headers.has("Content-Type"))
                 headers.set("Content-Type", "application/json");
             const response = await fetch(`${this.baseUrl}${path}`, {
@@ -275,14 +265,20 @@ class OpenVikingClient {
     }
     async find(query, options) {
         const normalizedTargetUri = await this.normalizeTargetUri(options.targetUri);
+        const body = {
+            query,
+            target_uri: normalizedTargetUri,
+            limit: options.limit,
+            score_threshold: options.scoreThreshold,
+            include_provenance: true,
+        };
+        if (options.since) {
+            body.since = options.since;
+            body.time_field = "created_at";
+        }
         return this.request("/api/v1/search/find", {
             method: "POST",
-            body: JSON.stringify({
-                query,
-                target_uri: normalizedTargetUri,
-                limit: options.limit,
-                score_threshold: options.scoreThreshold,
-            }),
+            body: JSON.stringify(body),
         });
     }
     async read(uri) {
@@ -399,6 +395,61 @@ function rankForInjection(item, query) {
     const overlapBoost = lexicalOverlapBoost(query.tokens, `${item.uri} ${abstract}`);
     return baseScore + leafBoost + eventBoost + prefBoost + overlapBoost;
 }
+// MMR Diversity — Jaccard-based near-duplicate reduction
+function tokenize(text) {
+    if (!text)
+        return new Set();
+    return new Set(text.toLowerCase().match(/[a-z0-9\u4e00-\u9fa5]{2,}/gi) ?? []);
+}
+function jaccardSimilarity(a, b) {
+    if (a.size === 0 && b.size === 0)
+        return 1;
+    if (a.size === 0 || b.size === 0)
+        return 0;
+    let intersection = 0;
+    for (const t of a)
+        if (b.has(t))
+            intersection++;
+    return intersection / (a.size + b.size - intersection);
+}
+function mmrFilter(items, lambda = 0.7) {
+    if (items.length <= 1)
+        return items;
+    const tokenSets = items.map(item => tokenize((item.abstract ?? item.overview ?? "") + " " + item.uri));
+    const selected = [0];
+    const remaining = new Set(items.map((_, i) => i));
+    remaining.delete(0);
+    while (selected.length < items.length && remaining.size > 0) {
+        let bestIdx = -1;
+        let bestMmr = -Infinity;
+        for (const idx of remaining) {
+            const relevance = clampScore(items[idx].score);
+            let maxSim = 0;
+            for (const selIdx of selected) {
+                const sim = jaccardSimilarity(tokenSets[idx], tokenSets[selIdx]);
+                if (sim > maxSim)
+                    maxSim = sim;
+            }
+            const mmrScore = lambda * relevance - (1 - lambda) * maxSim;
+            if (mmrScore > bestMmr) {
+                bestMmr = mmrScore;
+                bestIdx = idx;
+            }
+        }
+        if (bestIdx === -1)
+            break;
+        selected.push(bestIdx);
+        remaining.delete(bestIdx);
+    }
+    return selected.map(i => items[i]);
+}
+// Citations
+function formatCitation(item) {
+    const uri = item.uri || "unknown";
+    const type = item.category ?? "memory";
+    const score = typeof item.score === "number" ? item.score.toFixed(2) : "?";
+    return `[Source: ${uri} | ${type} | score:${score}]`;
+}
 function pickMemoriesForInjection(items, limit, queryText) {
     if (items.length === 0 || limit <= 0)
         return [];
@@ -413,12 +464,14 @@ function pickMemoriesForInjection(items, limit, queryText) {
         seen.add(key);
         deduped.push(item);
     }
-    const leaves = deduped.filter((item) => item.level === 2);
+    // Apply MMR diversity filter
+    const diversified = mmrFilter(deduped, 0.7);
+    const leaves = diversified.filter((item) => item.level === 2);
     if (leaves.length >= limit)
         return leaves.slice(0, limit);
     const picked = [...leaves];
     const used = new Set(leaves.map((item) => item.uri));
-    for (const item of deduped) {
+    for (const item of diversified) {
         if (picked.length >= limit)
             break;
         if (used.has(item.uri))
@@ -432,8 +485,8 @@ function pickMemoriesForInjection(items, limit, queryText) {
 // ---------------------------------------------------------------------------
 async function searchBothScopes(client, query, limit) {
     const [userSettled, agentSettled] = await Promise.allSettled([
-        client.find(query, { targetUri: "viking://user/memories", limit, scoreThreshold: 0 }),
-        client.find(query, { targetUri: "viking://agent/memories", limit, scoreThreshold: 0 }),
+        client.find(query, { targetUri: "viking://user/memories", limit, scoreThreshold: 0, since: "90d" }),
+        client.find(query, { targetUri: "viking://agent/memories", limit, scoreThreshold: 0, since: "90d" }),
     ]);
     const userResult = userSettled.status === "fulfilled" ? userSettled.value : { memories: [] };
     const agentResult = agentSettled.status === "fulfilled" ? agentSettled.value : { memories: [] };
@@ -445,7 +498,7 @@ async function searchBothScopes(client, query, limit) {
 // ---------------------------------------------------------------------------
 // MCP Server
 // ---------------------------------------------------------------------------
-const client = new OpenVikingClient(config.baseUrl, config.apiKey, config.agentId, config.account, config.user, config.timeoutMs);
+const client = new OpenVikingClient(config.baseUrl, config.apiKey, config.agentId, config.timeoutMs);
 const server = new McpServer({
     name: "openviking-memory",
     version: "0.1.0",
@@ -473,22 +526,23 @@ server.tool("memory_recall", "Search long-term memories from OpenViking. Use whe
     if (memories.length === 0) {
         return { content: [{ type: "text", text: "No relevant memories found in OpenViking." }] };
     }
-    // Read full content for leaf memories
+    // Read full content for leaf memories + add citations
     const lines = await Promise.all(memories.map(async (item) => {
+        const citation = formatCitation(item);
         if (item.level === 2) {
             try {
                 const content = await client.read(item.uri);
                 if (content?.trim())
-                    return `- [${item.category ?? "memory"}] ${content.trim()}`;
+                    return `- [${item.category ?? "memory"}] ${content.trim()}\n  ${citation}`;
             }
             catch { /* fallback */ }
         }
-        return `- [${item.category ?? "memory"}] ${item.abstract ?? item.uri}`;
+        return `- [${item.category ?? "memory"}] ${item.abstract ?? item.uri}\n  ${citation}`;
     }));
     return {
         content: [{
                 type: "text",
-                text: `Found ${memories.length} relevant memories:\n\n${lines.join("\n")}\n\n---\n${formatMemoryLines(memories)}`,
+                text: `Found ${memories.length} relevant memories:\n\n${lines.join("\n")}`,
             }],
     };
 });
@@ -594,14 +648,17 @@ server.tool("memory_health", "Check whether the OpenViking memory server is reac
 });
 // -- Tool: memory_search (glob/grep) ----------------------------------------
 server.tool("memory_search", "Search OpenViking using structural patterns (glob/grep) instead of semantic search. Use for exact filename matches, config key lookups, or regex pattern matching.", {
-    pattern: z.string().describe("Search pattern — glob pattern (e.g. '*.md', 'projects/*/CLAUDE.md') or grep regex"),
+    pattern: z.string().describe("Search pattern — glob pattern or grep regex"),
     mode: z.enum(["glob", "grep"]).default("grep").describe("Search mode: 'glob' for filename patterns, 'grep' for content regex"),
-    path: z.string().optional().describe("Optional: restrict search to a URI path (e.g. 'viking://resources/projects/')"),
+    path: z.string().optional().describe("Optional: restrict search to a URI path"),
 }, async (args) => {
     try {
         const endpoint = args.mode === "glob" ? "/api/v1/search/glob" : "/api/v1/search/grep";
         const body = { pattern: args.pattern };
-        if (args.path) body.path = args.path;
+        if (args.path)
+            body.path = args.path;
+        if (args.mode === "grep")
+            body.uri = args.path || "viking://user/";
         const result = await client.request(endpoint, {
             method: "POST",
             body: JSON.stringify(body),
@@ -610,18 +667,19 @@ server.tool("memory_search", "Search OpenViking using structural patterns (glob/
         if (items.length === 0) {
             return { content: [{ type: "text", text: `No matches found for pattern: ${args.pattern}` }] };
         }
-        const lines = items.slice(0, 20).map(item => {
+        const lines = items.slice(0, 20).map((item) => {
             const uri = item.uri || item.path || item.name || "?";
             const snippet = (item.content || item.text || item.abstract || "").slice(0, 200);
             return `- ${uri}${snippet ? ": " + snippet : ""}`;
         });
         return { content: [{ type: "text", text: `Found ${items.length} matches:\n${lines.join("\n")}` }] };
-    } catch (err) {
+    }
+    catch (err) {
         return { content: [{ type: "text", text: `Search failed: ${err.message}` }], isError: true };
     }
 });
 // -- Tool: convert_to_markdown (markitdown) ---------------------------------
-server.tool("convert_to_markdown", "Convert any file (PDF, DOCX, XLSX, PPTX, HTML, images, audio) to Markdown using markitdown. Returns the converted text.", {
+server.tool("convert_to_markdown", "Convert any file (PDF, DOCX, XLSX, PPTX, HTML, images, audio) to Markdown using markitdown.", {
     file_path: z.string().describe("Absolute path to the file to convert"),
 }, async (args) => {
     try {
@@ -635,7 +693,8 @@ server.tool("convert_to_markdown", "Convert any file (PDF, DOCX, XLSX, PPTX, HTM
             return { content: [{ type: "text", text: "Conversion produced empty output." }] };
         }
         return { content: [{ type: "text", text: output }] };
-    } catch (err) {
+    }
+    catch (err) {
         if (err.message?.includes("not found") || err.message?.includes("ENOENT")) {
             return { content: [{ type: "text", text: "markitdown is not installed. Install via: pip install markitdown" }], isError: true };
         }

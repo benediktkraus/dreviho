@@ -1,217 +1,210 @@
 # OpenViking Memory Hooks
 
-Auto-recall + auto-capture hooks for [OpenViking](https://github.com/volcengine/OpenViking). Works with Claude Code, Codex CLI, Gemini CLI, and OpenClaw.
+**Production-grade auto-recall + auto-capture for AI coding assistants.** One memory pool, four CLIs, zero config drift.
 
-Fork of [Castor6/openviking-plugins](https://github.com/Castor6/openviking-plugins). Added scoping, hybrid search, dedup, and multi-CLI support.
+Works with [Claude Code](https://github.com/anthropics/claude-code) · [Codex CLI](https://github.com/openai/codex) · [Gemini CLI](https://github.com/google-gemini/gemini-cli) · [OpenClaw](https://github.com/openclaw/openclaw)
 
-## CLIs
+Backed by [OpenViking](https://github.com/volcengine/OpenViking) — semantic memory server with embeddings, sessions, and content extraction.
 
-| CLI | Recall | Capture |
-|-----|--------|---------|
-| Claude Code | UserPromptSubmit | Stop |
-| Codex CLI | UserPromptSubmit | Stop |
-| Gemini CLI | BeforeAgent | AfterAgent |
-| OpenClaw | before_prompt_build | afterTurn |
+## What it does
 
-All share one OV instance, one user, one memory pool. Agent-ID is just a tag.
-
-## How it works
+Every prompt you send gets enriched with relevant memories. Every session captures what matters. All four CLIs share the same brain.
 
 ```
-┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-│ Claude Code │  │  Codex CLI  │  │ Gemini CLI  │  │  OpenClaw   │
-└──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
-       │                │                │                │
-       │  UserPrompt    │  UserPrompt    │  BeforeAgent   │  before_prompt
-       ▼                ▼                ▼                ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                     auto-recall.mjs                              │
-│                                                                  │
-│  CWD ──► scope-resolver ──► 5 target URIs                       │
-│          │                                                       │
-│          ├──► /search/find (semantic, per scope)  ──┐            │
-│          └──► /search/grep (keywords)             ──┤            │
-│                                                     ▼            │
-│                                              RRF Merge           │
-│                                                     │            │
-│                              ranking.mjs ◄──────────┘            │
-│                              (source authority + backlinks)      │
-│                                     │                            │
-│                              compaction.mjs                      │
-│                              (~30% token reduction)              │
-│                                     │                            │
-│                              scope hints                         │
-│                                     ▼                            │
-│                          <relevant-memories>                     │
-└──────────────────────────────────────────────────────────────────┘
-                              │
-                    ┌─────────┴─────────┐
-                    ▼                   ▼
-              Agent works         On session end
-                    │                   │
-                    │                   ▼
-                    │     ┌─────────────────────────┐
-                    │     │    auto-capture.mjs      │
-                    │     │                          │
-                    │     │  Content Merge (>0.85?)  │
-                    │     │    ├─ yes: append         │
-                    │     │    └─ no: extract new     │
-                    │     │                          │
-                    │     │  Record Used (feedback)  │
-                    │     │  Auto-Link (project)     │
-                    │     └────────────┬─────────────┘
-                    │                  │
-                    ▼                  ▼
-              ┌──────────────────────────────┐
-              │     OpenViking Server        │
-              │     (localhost:1933)          │
-              │                              │
-              │      OpenViking Server       │
-              │      (localhost:1933)        │
-              │                              │
-              │  ┌─ viking://resources/ ──┐  │
-              │  │  system/    infra/     │  │
-              │  │  projects/  knowledge/ │  │
-              │  │  tool-docs/           │  │
-              │  └────────────────────────┘  │
-              │  ┌─ viking://user/ ───────┐  │
-              │  │  memories/ (shared)    │  │
-              │  └────────────────────────┘  │
-              │                              │
-              │  APIs used:                  │
-              │  /search/find  (semantic)    │
-              │  /search/grep  (keyword)     │
-              │  /content/write (capture)    │
-              │  /sessions/extract (AI)      │
-              │  /relations/link (graph)     │
-              │  /stats/memories (monitor)   │
-              │  /pack/export  (backup)      │
-              └──────────────────────────────┘
-                        │
-          ┌─────────────┼─────────────────┐
-          ▼             ▼                 ▼
-    ┌──────────┐  ┌──────────┐  ┌──────────────┐
-    │ Cron Jobs│  │ MCP Tools│  │  Next Recall  │
-    │          │  │          │  │              │
-    │ backup   │  │ recall   │  │ Memories     │
-    │ sync     │  │ store    │  │ injected via │
-    │ maintain │  │ search   │  │ <relevant-   │
-    │ stats    │  │ convert  │  │  memories>   │
-    └──────────┘  └──────────┘  └──────────────┘
+You type a prompt
+       │
+       ▼
+┌──────────────────────────────────────────┐
+│            auto-recall.mjs               │
+│                                          │
+│  1. Resolve scopes from CWD              │
+│  2. Hybrid search (semantic + grep)      │
+│  3. RRF merge + 7-dim ranking            │
+│  4. MMR diversity filter                 │
+│  5. Temporal decay (30d half-life)       │
+│  6. Caveman compaction (-30% tokens)     │
+│  7. Citations + scope hints              │
+│                                          │
+│  → <relevant-memories> injected          │
+└──────────────────────────────────────────┘
+       │
+       ▼
+  Agent works with context
+       │
+       ▼
+┌──────────────────────────────────────────┐
+│           auto-capture.mjs               │
+│                                          │
+│  1. Pre-process (strip code, tags)       │
+│  2. Substance filter (skip noise)        │
+│  3. Content merge (>0.85 → append)       │
+│  4. Extract via OV sessions              │
+│  5. Record Used (feedback loop)          │
+│  6. Auto-link (project + tool + error)   │
+└──────────────────────────────────────────┘
+       │
+       ▼
+   OpenViking Server
 ```
 
-## vs Castor6 Original
+## Features
 
-| | Castor6 | This fork |
-|---|---|---|
-| CLIs | Claude Code | + Codex, Gemini, OpenClaw |
-| Search | Semantic only | + grep + RRF merge |
-| Scoping | None | 5 scopes, CWD-based |
-| Dedup | None | Content merge (>0.85 → append) |
-| Ranking | Score only | + source authority + backlink boost |
-| Compaction | None | Caveman (~30% token reduction) |
-| Relations | None | Auto-link to projects |
-| Feedback | None | Record Used tracking |
-| MCP Tools | 4 | 6 (+search, +markitdown) |
-| Session Start | Runtime bootstrap | + project content check + on-demand sync |
-| Stale Dedup | None | >80% URI overlap → short-circuit |
-| Subagent Hooks | None | SubagentStart/Stop (CC), scope isolation |
-| Pre-Compaction | None | PreCompact (CC), PreCompress (Gemini) |
-| OC Plugin | None | Full ContextEngine (8 methods) |
+**Recall pipeline:**
+- **Hybrid search** — semantic vectors + keyword grep, merged via Reciprocal Rank Fusion
+- **5-scope system** — system, infra, project, knowledge, personal — resolved from CWD
+- **7-dimension ranking** — base score, leaf boost, event boost, preference boost, lexical overlap, source authority, temporal decay
+- **MMR diversity** — Jaccard similarity filter, reduces near-duplicates (lambda 0.7)
+- **Temporal decay** — 30-day half-life for memories, evergreen exceptions for resources
+- **Citations** — `[Source: uri | type | score]` on every injected memory
+- **Stale dedup** — >80% URI overlap with previous recall → short-circuit (saves ~500 tokens)
+- **Caveman compaction** — regex-based ~30% token reduction before injection
 
-## Install
+**Capture pipeline:**
+- **Substance filter** — skips greetings, CLI commands, short messages, low-entropy text
+- **Pre-processing** — strips code blocks, tool outputs, system tags before extraction
+- **Content merge** — similarity >0.85 appends to existing memory instead of creating duplicates
+- **Record Used** — reports which recalled URIs were actually in context (OV feedback loop)
+- **Auto-link** — project relations + tool mentions (docker, n8n, openclaw, etc.) + incident tagging
+- **Incremental capture** — state tracking per session, no duplicate turns
+
+**Infrastructure:**
+- **Retry with backoff** — 2 retries on 5xx/timeout/ECONNREFUSED, exponential delay
+- **CF Access ready** — optional `cfAccessClientId` + `cfAccessClientSecret` headers
+- **Remote mode** — connect from any machine to a remote OV instance via HTTPS
+- **Shared modules** — scope-resolver, ranking, compaction, decay-cache under `~/.openviking/`
+
+## Quick start
 
 ```bash
-./install.sh all          # all CLIs
-./install.sh claude-code  # just Claude Code
-./install.sh codex        # just Codex
-./install.sh gemini       # just Gemini
-./install.sh openclaw     # just OpenClaw
+# Clone
+git clone https://github.com/benediktkraus/openviking-hooks.git
+cd openviking-hooks
+
+# Install (local OV server)
+./install.sh all
+
+# Install (remote OV, e.g. from a Mac connecting to your server)
+./install-mac.sh all
+
+# Set your API key
+nano ~/.openviking/claude-code-memory-plugin/config.json
 ```
 
-Then edit `~/.openviking/<cli>-memory-plugin/config.json` — set API key, account, user.
+Per-CLI install: `./install.sh claude-code`, `./install.sh codex`, `./install.sh gemini`, `./install.sh openclaw`
+
+## CLI support
+
+| CLI | Recall hook | Capture hook | Extra hooks |
+|-----|------------|-------------|-------------|
+| Claude Code | UserPromptSubmit | Stop | SessionStart (bootstrap), SubagentStart/Stop, PreCompact |
+| Codex CLI | UserPromptSubmit | Stop | — |
+| Gemini CLI | BeforeAgent | AfterAgent | PreCompress |
+| OpenClaw | ContextEngine.assemble | ContextEngine.ingest | 8 lifecycle methods (bootstrap, compact, maintain, subagent) |
+
+All CLIs share one OV instance, one memory pool. `agentId` tags writes per-CLI.
 
 ## Scopes
 
-| Scope | URI | Active when |
-|-------|-----|-------------|
+Scopes are resolved from your current working directory:
+
+| Scope | URI prefix | When active |
+|-------|-----------|-------------|
 | system | `viking://resources/system/` | Always |
-| infra | `viking://resources/infra/` | No project, or infra CWD |
-| project | `viking://resources/projects/<slug>/` | CWD in project dir |
+| infra | `viking://resources/infra/` | Always (infra CWD boost) |
+| project | `viking://resources/projects/<slug>/` | CWD inside a project |
 | knowledge | `viking://resources/knowledge/` | Always |
-| personal | `viking://user/memories/personal/` | Personal projects only |
+| personal | `viking://user/memories/personal/` | Personal project dirs |
 
-Config: `shared/scope-config.json`
+Configure in `shared/scope-config.json`.
 
-## Repo structure
+## vs upstream (Castor6)
 
-```
-shared/           — scope-resolver, compaction, ranking, scope-config (all CLIs import)
-scripts/          — hook scripts (auto-recall, auto-capture, bootstrap, subagent-scope, pre-compact)
-servers/          — MCP server (6 tools: recall, store, forget, health, search, markitdown)
-hooks/            — hook definitions for Claude Code plugin
-config/           — config templates per CLI (placeholder keys)
-src/              — TypeScript source (MCP server)
-openclaw-plugin/  — OC ContextEngine plugin (openviking-enhanced)
-  src/            — 7 TS files (index, context-engine, ov-client, config, hybrid-search, scope-hints, text-utils)
-specs/            — temporal flow, architecture specs
-adr/              — 5 architecture decision records
-```
+| | [Castor6/openviking-plugins](https://github.com/Castor6/openviking-plugins) | This fork |
+|---|---|---|
+| CLIs | Claude Code only | + Codex, Gemini, OpenClaw |
+| Search | Semantic only | + grep + RRF merge |
+| Ranking | Raw score | 7 dimensions + MMR diversity + temporal decay |
+| Scoping | None | 5 scopes, CWD-based |
+| Capture filter | None | Substance signals, skip patterns, code ratio |
+| Dedup | None | Content merge (>0.85 → append) + stale recall dedup |
+| Relations | None | Auto-link (project + tool + incident) |
+| Compaction | None | Caveman (-30% tokens) |
+| Resilience | No retry | 2 retries, exponential backoff |
+| Remote | No | HTTPS + CF Access headers |
+| MCP tools | 4 | 6 (+search, +markitdown) |
+| OC integration | None | Full ContextEngine plugin (8 methods) |
+| Subagent hooks | None | SubagentStart/Stop, scope isolation |
 
-## Config
+## OpenClaw Context Engine
 
-`~/.openviking/<cli>-memory-plugin/config.json`:
+The `openclaw-plugin/` directory contains a full **ContextEngine** plugin that replaces OC's built-in OV plugin. It implements all 8 lifecycle methods with the features above.
 
-| Field | Default | What |
-|-------|---------|------|
-| `mode` | `local` | `local` or `remote` |
-| `agentId` | `claude-code` | Tag, not namespace |
-| `recallLimit` | `10` | Max memories per recall |
-| `captureMode` | `semantic` | `semantic` or `keyword` |
-| `debug` | `false` | Hook debug logging |
-
-Override shared module path: `export OPENVIKING_HOME=/path/to/.openviking`
-
-## OpenClaw Plugin
-
-OC uses OV as a **native context engine** via `openclaw-plugin/` — a custom ContextEngine plugin (`openviking-enhanced`) that implements all 8 OC lifecycle methods. Not through hooks.
-
-| Method | What it does |
-|--------|-------------|
-| `bootstrap()` | Check project content in OV, trigger sync if missing |
-| `assemble()` | Hybrid search + scoping + ranking + compaction → `systemPromptAddition` |
-| `ingest()` | Content merge (>0.85 → append), session/extract, record used, auto-link |
-| `ingestBatch()` | Loop over ingest for batch turns |
-| `afterTurn()` | Reset recalled URIs after record used reporting |
-| `compact()` | Delegates to OC runtime (`delegateCompactionToRuntime`) |
-| `maintain()` | Strip stale `<relevant-memories>` blocks from transcript |
-| `prepareSubagentSpawn()` | Create OV scope marker for child agent |
-| `onSubagentEnded()` | Cleanup child scope metadata |
-
-Install:
 ```bash
+# Install
+cp -r openclaw-plugin /opt/openclaw/plugins/openviking-enhanced
+cd /opt/openclaw/plugins/openviking-enhanced && npm install
+
+# Activate
 openclaw config set plugins.slots.contextEngine openviking-enhanced
 openclaw config set plugins.entries.openviking.enabled false
 ```
 
-OC env vars (gateway.service): `OPENVIKING_URL`, `OPENVIKING_API_KEY`, `OPENVIKING_AGENT_PREFIX`.
+| Method | What |
+|--------|------|
+| `bootstrap()` | Project content check + on-demand sync |
+| `assemble()` | Hybrid search → ranking → compaction → `systemPromptAddition` |
+| `ingest()` | Content merge + session/extract + record used + auto-link |
+| `compact()` | Delegates to OC runtime |
+| `maintain()` | Strip stale `<relevant-memories>` blocks |
+| `prepareSubagentSpawn()` / `onSubagentEnded()` | Subagent scope isolation + cleanup |
 
-## Hook Events per CLI
+## Config
 
-Beyond recall/capture, these additional hooks are registered where the platform supports them:
+`~/.openviking/claude-code-memory-plugin/config.json`:
 
-| Event | Claude Code | Codex | Gemini | Purpose |
-|-------|-------------|-------|--------|---------|
-| Recall | UserPromptSubmit | UserPromptSubmit | BeforeAgent | Inject memories |
-| Capture | Stop | Stop | AfterAgent | Extract + store |
-| Bootstrap | SessionStart | — | — | Project content check |
-| Subagent Start | SubagentStart | — | — | Create OV scope for child |
-| Subagent Stop | SubagentStop | — | — | Cleanup child scope |
-| Pre-Compaction | PreCompact | — | PreCompress | Log active memories before compaction |
+```json
+{
+  "mode": "local",
+  "agentId": "claude-code",
+  "recallLimit": 10,
+  "scoreThreshold": 0.1,
+  "captureMode": "semantic",
+  "autoRecall": true,
+  "autoCapture": true,
+  "debug": false
+}
+```
 
-## Stale Recall Dedup
+Remote mode (e.g. from a Mac):
+```json
+{
+  "mode": "remote",
+  "baseUrl": "https://your-ov-server.example.com",
+  "apiKey": "your-api-key",
+  "account": "your-account",
+  "user": "your-user"
+}
+```
 
-When >80% of recalled URIs are identical to the previous recall, a short "context still active" message is injected instead of the full memory block. Saves ~500 tokens per duplicate turn. Active in all CLIs and the OC plugin.
+## Repo structure
+
+```
+scripts/          — auto-recall.mjs, auto-capture.mjs, config.mjs, bootstrap, subagent, debug
+shared/           — scope-resolver, ranking, compaction, decay-cache, scope-config (SSoT for all CLIs)
+servers/          — MCP server (6 tools: recall, store, forget, health, search, markitdown)
+src/              — TypeScript source for MCP server
+hooks/            — Hook definitions per CLI (JSON)
+config/           — Config templates with placeholder keys
+openclaw-plugin/  — OC ContextEngine (TypeScript, 7 source files)
+install.sh        — Local install for all CLIs
+install-mac.sh    — Remote install for macOS (Claude.app, Codex desktop)
+```
+
+## Requirements
+
+- [OpenViking](https://github.com/volcengine/OpenViking) server (local or remote)
+- Node.js 18+
+- One of: Claude Code, Codex CLI, Gemini CLI, OpenClaw
 
 ## License
 

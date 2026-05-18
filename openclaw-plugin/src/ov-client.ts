@@ -20,26 +20,41 @@ export class OVClient {
     if (this.cfg.agentPrefix) headers["X-OpenViking-Agent"] = this.cfg.agentPrefix;
     if (this.cfg.account) headers["X-OpenViking-Account"] = this.cfg.account;
     if (this.cfg.user) headers["X-OpenViking-User"] = this.cfg.user;
+    if (this.cfg.cfAccessClientId) headers["CF-Access-Client-Id"] = this.cfg.cfAccessClientId;
+    if (this.cfg.cfAccessClientSecret) headers["CF-Access-Client-Secret"] = this.cfg.cfAccessClientSecret;
     return headers;
   }
 
-  async fetchJSON<T = unknown>(path: string, init: RequestInit = {}, timeoutMs?: number): Promise<T | null> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs ?? this.cfg.timeoutMs);
-    try {
-      const res = await fetch(`${this.cfg.baseUrl}${path}`, {
-        ...init,
-        headers: { ...this.buildHeaders(), ...(init.headers as Record<string, string> || {}) },
-        signal: controller.signal,
-      });
-      const body = await res.json() as Record<string, unknown>;
-      if (!res.ok || body.status === "error") return null;
-      return (body.result ?? body) as T;
-    } catch {
-      return null;
-    } finally {
-      clearTimeout(timer);
+  async fetchJSON<T = unknown>(path: string, init: RequestInit = {}, timeoutMs?: number, retries = 2): Promise<T | null> {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs ?? this.cfg.timeoutMs);
+      try {
+        const res = await fetch(`${this.cfg.baseUrl}${path}`, {
+          ...init,
+          headers: { ...this.buildHeaders(), ...(init.headers as Record<string, string> || {}) },
+          signal: controller.signal,
+        });
+        if (res.status >= 500 && attempt < retries) {
+          clearTimeout(timer);
+          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
+        const body = await res.json() as Record<string, unknown>;
+        if (!res.ok || body.status === "error") return null;
+        return (body.result ?? body) as T;
+      } catch (err) {
+        clearTimeout(timer);
+        if (attempt < retries && ((err as Error)?.name === "AbortError" || (err as NodeJS.ErrnoException)?.code === "ECONNREFUSED")) {
+          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
+        return null;
+      } finally {
+        clearTimeout(timer);
+      }
     }
+    return null;
   }
 
   async health(): Promise<boolean> {

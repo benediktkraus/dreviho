@@ -40,24 +40,39 @@ function approve(msg) {
   output(out);
 }
 
-async function fetchJSON(path, init = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), cfg.captureTimeoutMs);
-  try {
-    const headers = { "Content-Type": "application/json" };
-    if (cfg.apiKey) headers["X-API-Key"] = cfg.apiKey;
-    if (cfg.agentId) headers["X-OpenViking-Agent"] = cfg.agentId;
-    if (cfg.account) headers["X-OpenViking-Account"] = cfg.account;
-    if (cfg.user) headers["X-OpenViking-User"] = cfg.user;
-    const res = await fetch(`${cfg.baseUrl}${path}`, { ...init, headers, signal: controller.signal });
-    const body = await res.json();
-    if (!res.ok || body.status === "error") return null;
-    return body.result ?? body;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
+async function fetchJSON(path, init = {}, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), cfg.captureTimeoutMs);
+    try {
+      const headers = { "Content-Type": "application/json" };
+      if (cfg.apiKey) headers["X-API-Key"] = cfg.apiKey;
+      if (cfg.agentId) headers["X-OpenViking-Agent"] = cfg.agentId;
+      if (cfg.account) headers["X-OpenViking-Account"] = cfg.account;
+      if (cfg.user) headers["X-OpenViking-User"] = cfg.user;
+      if (cfg.cfAccessClientId) headers["CF-Access-Client-Id"] = cfg.cfAccessClientId;
+      if (cfg.cfAccessClientSecret) headers["CF-Access-Client-Secret"] = cfg.cfAccessClientSecret;
+      const res = await fetch(`${cfg.baseUrl}${path}`, { ...init, headers, signal: controller.signal });
+      if (res.status >= 500 && attempt < retries) {
+        clearTimeout(timer);
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      const body = await res.json();
+      if (!res.ok || body.status === "error") return null;
+      return body.result ?? body;
+    } catch (err) {
+      clearTimeout(timer);
+      if (attempt < retries && (err?.name === "AbortError" || err?.code === "ECONNREFUSED")) {
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +114,23 @@ const MEMORY_TRIGGERS = [
   /(?:favorite|favourite|love|hate|enjoy|dislike|admire|idol|fan of)/i,
 ];
 
+const SKIP_PATTERNS = [
+  /^\s*(ja|ok|okay|yes|no|nein|nope|yep|sure|klar|mach|go|weiter|next|done|fertig|danke|thanks|hi|hey|hallo|hello|bye|ciao|gut|nice|cool|alright|understood|verstanden)\s*[.!?]*\s*$/i,
+  /^\s*(git (status|log|diff|show)|ls |cd |cat |pwd|npm |docker |curl )/i,
+  /^\s*\[?(user|assistant)\]?:\s*(ja|ok|mach|weiter|go)\s*$/i,
+  /^\[assistant\]:\s*```[\s\S]{0,200}```\s*$/,
+  /^(reading|checking|running|looking|searching|fetching|analyzing)\b/i,
+  /^\[assistant\]:\s*(I'll|Let me|Checking|Reading|Looking|Running|Here's the)\b/i,
+];
+
+const SUBSTANCE_SIGNALS = [
+  /\b(weil|because|reason|grund|entscheidung|decision|problem|issue|bug|fix|feature|deploy|config|install|setup|migration|refactor)\b/i,
+  /\b(soll|should|must|muss|will|want|brauche|need|plan|strateg|approach|l\u00f6sung|solution)\b/i,
+  /\b(fehler|error|crash|broken|kaputt|fail|timeout|refused|denied|missing|wrong)\b/i,
+  /\b(user|admin|kunde|client|api|endpoint|database|server|container|service)\b/i,
+  /\b(ich (will|mach|hab|bin)|i (want|need|have|am|did|found|noticed))\b/i,
+];
+
 const RELEVANT_MEMORIES_BLOCK_RE = /<relevant-memories>[\s\S]*?<\/relevant-memories>/gi;
 const COMMAND_TEXT_RE = /^\/[a-z0-9_-]{1,64}\b/i;
 const NON_CONTENT_TEXT_RE = /^[\p{P}\p{S}\s]+$/u;
@@ -130,6 +162,12 @@ function shouldCapture(text) {
     return { capture: false, reason: "non_content", text: normalized };
   }
 
+  for (const skip of SKIP_PATTERNS) {
+    if (skip.test(normalized)) {
+      return { capture: false, reason: "skip_pattern", text: normalized };
+    }
+  }
+
   if (cfg.captureMode === "keyword") {
     for (const trigger of MEMORY_TRIGGERS) {
       if (trigger.test(normalized)) {
@@ -139,7 +177,19 @@ function shouldCapture(text) {
     return { capture: false, reason: "no_trigger", text: normalized };
   }
 
-  // semantic mode — always capture
+  const words = normalized.split(/\s+/).length;
+  if (words < 8) return { capture: false, reason: "too_short_semantic", text: normalized };
+
+  const CODE_BLOCK_RE = /```[\s\S]*?```/g;
+  const textWithoutCode = normalized.replace(CODE_BLOCK_RE, " ");
+  const codeRatio = 1 - (textWithoutCode.length / Math.max(normalized.length, 1));
+  if (codeRatio > 0.8) return { capture: false, reason: "mostly_code", text: normalized };
+
+  const hasSubstance = SUBSTANCE_SIGNALS.some(sig => sig.test(textWithoutCode));
+  if (!hasSubstance && words < 25) {
+    return { capture: false, reason: "low_substance", text: normalized };
+  }
+
   return { capture: true, reason: "semantic", text: normalized };
 }
 
@@ -319,11 +369,22 @@ async function main() {
     return;
   }
 
-  // Format only the capturable turns
-  const turnText = captureTurns.map(t => `[${t.role}]: ${t.text}`).join("\n");
+  // Pre-process: strip code blocks, tool outputs, and system noise before capture
+  const CODE_BLOCK_STRIP = /```[\s\S]*?```/g;
+  const TOOL_OUTPUT_STRIP = /<tool_result>[\s\S]*?<\/tool_result>/gi;
+  const SYSTEM_TAG_STRIP = /<system-reminder>[\s\S]*?<\/system-reminder>/gi;
+  const capturableText = captureTurns.map(t => {
+    let text = t.text;
+    if (t.role === "assistant") {
+      text = text.replace(CODE_BLOCK_STRIP, "[code]");
+      text = text.replace(TOOL_OUTPUT_STRIP, "");
+      text = text.replace(SYSTEM_TAG_STRIP, "");
+    }
+    return `[${t.role}]: ${text}`;
+  }).join("\n");
 
   // Check capture decision
-  const decision = shouldCapture(turnText);
+  const decision = shouldCapture(capturableText);
   log("should_capture", {
     capture: decision.capture,
     reason: decision.reason,
@@ -383,24 +444,43 @@ async function main() {
     }
   } catch { /* best effort — no tracking file means no recall happened */ }
 
-  // Auto-Link: detect project slugs in captured text and create relations
+  // Auto-Link: project + tool + error relations
   try {
     const cwd = process.cwd();
     const projectMatch = cwd.match(/\/projects\/([^/]+)/);
     if (projectMatch) {
       const slug = projectMatch[1];
       const projectUri = `viking://resources/projects/${slug}/`;
-      // Link any new memories to the active project
       await fetchJSON("/api/v1/relations/link", {
         method: "POST",
-        body: JSON.stringify({
-          source: `viking://user/memories/`,
-          target: projectUri,
-          type: "belongs_to",
-          label: `captured in project ${slug}`,
-        }),
+        body: JSON.stringify({ source: `viking://user/memories/`, target: projectUri, type: "belongs_to", label: `captured in project ${slug}` }),
       });
       log("auto_link", { project: slug, type: "belongs_to" });
+    }
+    // Detect tool mentions (docker, n8n, openclaw, etc.) and link to tool entities
+    const toolPatterns = [
+      { re: /\b(docker|container|compose)\b/i, tool: "docker" },
+      { re: /\b(n8n|workflow|webhook)\b/i, tool: "n8n" },
+      { re: /\b(openclaw|ralph|gateway)\b/i, tool: "openclaw" },
+      { re: /\b(cloudflare|wrangler|tunnel|cf)\b/i, tool: "cloudflare" },
+      { re: /\b(openviking|ov|memory)\b/i, tool: "openviking" },
+      { re: /\b(langfuse|traces?|observability)\b/i, tool: "langfuse" },
+    ];
+    const mentionedTools = toolPatterns.filter(p => p.re.test(decision.text)).map(p => p.tool);
+    for (const tool of mentionedTools.slice(0, 3)) {
+      await fetchJSON("/api/v1/relations/link", {
+        method: "POST",
+        body: JSON.stringify({ source: `viking://user/memories/`, target: `viking://resources/tools/${tool}/`, type: "mentions_tool", label: tool }),
+      });
+    }
+    if (mentionedTools.length > 0) log("auto_link_tools", { tools: mentionedTools });
+    // Detect error/incident patterns and tag
+    if (/\b(error|crash|broken|kaputt|fail|bug|fix)\b/i.test(decision.text)) {
+      await fetchJSON("/api/v1/relations/link", {
+        method: "POST",
+        body: JSON.stringify({ source: `viking://user/memories/`, target: `viking://resources/incidents/`, type: "incident_report", label: new Date().toISOString().slice(0, 10) }),
+      });
+      log("auto_link_incident", { date: new Date().toISOString().slice(0, 10) });
     }
   } catch { /* best effort */ }
 

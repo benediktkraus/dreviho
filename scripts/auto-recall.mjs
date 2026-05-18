@@ -51,24 +51,39 @@ function approve(msg) {
   output(out);
 }
 
-async function fetchJSON(path, init = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), cfg.timeoutMs);
-  try {
-    const headers = { "Content-Type": "application/json" };
-    if (cfg.apiKey) headers["X-API-Key"] = cfg.apiKey;
-    if (cfg.agentId) headers["X-OpenViking-Agent"] = cfg.agentId;
-    if (cfg.account) headers["X-OpenViking-Account"] = cfg.account;
-    if (cfg.user) headers["X-OpenViking-User"] = cfg.user;
-    const res = await fetch(`${cfg.baseUrl}${path}`, { ...init, headers, signal: controller.signal });
-    const body = await res.json();
-    if (!res.ok || body.status === "error") return null;
-    return body.result ?? body;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
+async function fetchJSON(path, init = {}, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), cfg.timeoutMs);
+    try {
+      const headers = { "Content-Type": "application/json" };
+      if (cfg.apiKey) headers["X-API-Key"] = cfg.apiKey;
+      if (cfg.agentId) headers["X-OpenViking-Agent"] = cfg.agentId;
+      if (cfg.account) headers["X-OpenViking-Account"] = cfg.account;
+      if (cfg.user) headers["X-OpenViking-User"] = cfg.user;
+      if (cfg.cfAccessClientId) headers["CF-Access-Client-Id"] = cfg.cfAccessClientId;
+      if (cfg.cfAccessClientSecret) headers["CF-Access-Client-Secret"] = cfg.cfAccessClientSecret;
+      const res = await fetch(`${cfg.baseUrl}${path}`, { ...init, headers, signal: controller.signal });
+      if (res.status >= 500 && attempt < retries) {
+        clearTimeout(timer);
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      const body = await res.json();
+      if (!res.ok || body.status === "error") return null;
+      return body.result ?? body;
+    } catch (err) {
+      clearTimeout(timer);
+      if (attempt < retries && (err?.name === "AbortError" || err?.code === "ECONNREFUSED")) {
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

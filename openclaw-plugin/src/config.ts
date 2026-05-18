@@ -9,6 +9,8 @@ export interface OVConfig {
   agentPrefix: string;
   account: string;
   user: string;
+  cfAccessClientId: string;
+  cfAccessClientSecret: string;
   recallLimit: number;
   scoreThreshold: number;
   timeoutMs: number;
@@ -26,6 +28,8 @@ export function loadConfig(): OVConfig {
     agentPrefix: process.env.OPENVIKING_AGENT_PREFIX || "openclaw-main",
     account: process.env.OPENVIKING_ACCOUNT || "",
     user: process.env.OPENVIKING_USER || "",
+    cfAccessClientId: process.env.CF_ACCESS_CLIENT_ID || "",
+    cfAccessClientSecret: process.env.CF_ACCESS_CLIENT_SECRET || "",
     recallLimit: parseInt(process.env.OPENVIKING_RECALL_LIMIT || "10", 10),
     scoreThreshold: parseFloat(process.env.OPENVIKING_SCORE_THRESHOLD || "0.1"),
     timeoutMs: parseInt(process.env.OPENVIKING_TIMEOUT_MS || "5000", 10),

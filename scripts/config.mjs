@@ -163,6 +163,8 @@ export function loadConfig() {
     agentId: str(file.agentId, "claude-code"),
     account: str(file.account, ""),
     user: str(file.user, ""),
+    cfAccessClientId: str(file.cfAccessClientId, ""),
+    cfAccessClientSecret: str(file.cfAccessClientSecret, ""),
     timeoutMs,
 
     // Recall

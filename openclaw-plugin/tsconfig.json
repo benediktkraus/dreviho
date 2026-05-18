@@ -15,7 +15,7 @@
     "paths": {
       "openclaw/plugin-sdk/core": ["/usr/lib/node_modules/openclaw/dist/plugin-sdk/core.d.ts"],
       "openclaw/plugin-sdk": ["/usr/lib/node_modules/openclaw/dist/plugin-sdk/index.d.ts"],
-      "@mariozechner/pi-agent-core": ["/usr/lib/node_modules/openclaw/node_modules/@mariozechner/pi-agent-core/dist/index.d.ts"]
+      "@mariozechner/pi-agent-core": ["/usr/lib/node_modules/openclaw/node_modules/@earendil-works/pi-agent-core/dist/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"]

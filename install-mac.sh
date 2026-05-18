@@ -6,7 +6,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OV_HOME="${OPENVIKING_HOME:-$HOME/.openviking}"
-OV_URL="${OPENVIKING_URL:-https://ov.benediktkraus.de}"
+OV_URL="${OPENVIKING_URL:-https://your-ov-server.example.com}"
 
 info()  { printf "[ov-mac] %s\n" "$*"; }
 warn()  { printf "[ov-mac] WARN: %s\n" "$*" >&2; }
@@ -46,8 +46,8 @@ write_remote_config() {
   "baseUrl": "${OV_URL}",
   "apiKey": "REPLACE_WITH_YOUR_OV_API_KEY",
   "agentId": "mac",
-  "account": "ralph",
-  "user": "benedikt",
+  "account": "YOUR_ACCOUNT",
+  "user": "YOUR_USER",
   "recallLimit": 10,
   "scoreThreshold": 0.1,
   "autoRecall": true,

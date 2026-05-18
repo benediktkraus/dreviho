@@ -461,7 +461,7 @@ async function main() {
     const toolPatterns = [
       { re: /\b(docker|container|compose)\b/i, tool: "docker" },
       { re: /\b(n8n|workflow|webhook)\b/i, tool: "n8n" },
-      { re: /\b(openclaw|ralph|gateway)\b/i, tool: "openclaw" },
+      { re: /\b(openclaw|gateway)\b/i, tool: "openclaw" },
       { re: /\b(cloudflare|wrangler|tunnel|cf)\b/i, tool: "cloudflare" },
       { re: /\b(openviking|ov|memory)\b/i, tool: "openviking" },
       { re: /\b(langfuse|traces?|observability)\b/i, tool: "langfuse" },

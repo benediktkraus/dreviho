@@ -1,6 +1,6 @@
 # OpenViking Memory Hooks
 
-**Production-grade auto-recall + auto-capture for AI coding assistants.** One memory pool, four CLIs, zero config drift.
+Auto-recall + auto-capture for AI coding assistants. One memory pool, four CLIs, zero config drift.
 
 Works with [Claude Code](https://github.com/anthropics/claude-code) · [Codex CLI](https://github.com/openai/codex) · [Gemini CLI](https://github.com/google-gemini/gemini-cli) · [OpenClaw](https://github.com/openclaw/openclaw)
 

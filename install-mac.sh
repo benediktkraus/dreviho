@@ -32,10 +32,12 @@ install_shared() {
 }
 
 write_remote_config() {
-  local dir="$1" agent="$2"
+  # All Mac CLIs share one config (claude-code-memory-plugin/ is the fallback for all)
+  # agentId in the config file distinguishes per-CLI writes in OV
+  local dir="$OV_HOME/claude-code-memory-plugin"
   mkdir -p "$dir"
   if [[ -f "$dir/config.json" ]]; then
-    warn "config already exists at $dir/config.json — skipping (delete to reset)"
+    info "config exists at $dir/config.json — skipping (delete to reset)"
     return
   fi
   cat > "$dir/config.json" << EOF
@@ -43,7 +45,7 @@ write_remote_config() {
   "mode": "remote",
   "baseUrl": "${OV_URL}",
   "apiKey": "REPLACE_WITH_YOUR_OV_API_KEY",
-  "agentId": "${agent}",
+  "agentId": "mac",
   "account": "ralph",
   "user": "benedikt",
   "recallLimit": 10,
@@ -53,7 +55,7 @@ write_remote_config() {
 }
 EOF
   info "remote config → $dir/config.json"
-  warn "IMPORTANT: edit $dir/config.json and set apiKey!"
+  warn "IMPORTANT: edit $dir/config.json — set apiKey to your OV root_api_key"
 }
 
 install_scripts() {
@@ -66,10 +68,9 @@ install_scripts() {
 
 install_claude() {
   local scripts_dir="$HOME/.claude/plugins/openviking-remote/scripts"
-  local cfg_dir="$OV_HOME/claude-code-memory-plugin"
 
   install_scripts "$scripts_dir"
-  write_remote_config "$cfg_dir" "claude-mac"
+  write_remote_config
   info "scripts → $scripts_dir"
 
   # Add hooks to ~/.claude/settings.json
@@ -111,13 +112,12 @@ PYEOF
 install_codex() {
   local mkt="$HOME/local-marketplace"
   local dir="$mkt/plugins/openviking-memory"
-  local cfg_dir="$OV_HOME/codex-memory-plugin"
 
   mkdir -p "$dir/scripts" "$dir/.codex-plugin"
   cp "$SCRIPT_DIR/hooks/codex-plugin.json" "$dir/.codex-plugin/plugin.json"
   cp "$SCRIPT_DIR/hooks/codex-cli.json" "$dir/hooks.json"
   install_scripts "$dir/scripts"
-  write_remote_config "$cfg_dir" "codex-mac"
+  write_remote_config
   mkdir -p "$mkt/.agents/plugins"
   cat > "$mkt/.agents/plugins/marketplace.json" << 'MKT'
 {"plugins":{"openviking-memory":{"installStatus":"INSTALLED_BY_DEFAULT","icon":"🧠"}}}
@@ -128,12 +128,11 @@ MKT
 
 install_gemini() {
   local dir="$HOME/.gemini/extensions/openviking-memory"
-  local cfg_dir="$OV_HOME/gemini-memory-plugin"
 
   mkdir -p "$dir/scripts" "$dir/hooks"
   cp "$SCRIPT_DIR/hooks/gemini-cli.json" "$dir/hooks/hooks.json"
   install_scripts "$dir/scripts"
-  write_remote_config "$cfg_dir" "gemini-mac"
+  write_remote_config
 
   local enable="$HOME/.gemini/extensions/extension-enablement.json"
   if [[ -f "$enable" ]]; then
@@ -168,9 +167,8 @@ esac
 
 echo ""
 info "=== Next steps ==="
-info "1. Set your OV API key in each config file:"
+info "1. Set your OV API key (one shared config for all CLIs):"
 info "   $OV_HOME/claude-code-memory-plugin/config.json"
-info "   $OV_HOME/codex-memory-plugin/config.json"
-info "   $OV_HOME/gemini-memory-plugin/config.json"
+info "   → set apiKey to the root_api_key from your OV server's ov.conf"
 info "2. Restart your CLI apps"
 info "3. Test: ask your AI something it should remember from previous sessions"

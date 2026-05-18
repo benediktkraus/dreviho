@@ -21,3 +21,11 @@ PROGRESS.md
 adr/
 specs/
 .internal/
+
+# OneDrive sync conflict files
+*.conflict.*.md
+*.conflict.*.mjs
+*.conflict.*.js
+*.conflict.*.ts
+*.conflict.*.json
+*.CONFLICT.*.json

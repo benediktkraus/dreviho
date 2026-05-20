@@ -18,10 +18,12 @@ import { createLogger } from "./debug-log.mjs";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 const SHARED = process.env.OPENVIKING_HOME || `${homedir()}/.openviking`;
-const { resolveScopes, sourceAuthorityMultiplier } = await import(`${SHARED}/scope-resolver.mjs`);
-const { cavemanCompact } = await import(`${SHARED}/compaction.mjs`);
-const { temporalDecayFactor, isEvergreen, recordSeenBatch, flushCache } = await import(`${SHARED}/decay-cache.mjs`);
+const _imp = (f) => import(pathToFileURL(join(SHARED, f)).href);
+const { resolveScopes, sourceAuthorityMultiplier } = await _imp("scope-resolver.mjs");
+const { cavemanCompact } = await _imp("compaction.mjs");
+const { temporalDecayFactor, isEvergreen, recordSeenBatch, flushCache } = await _imp("decay-cache.mjs");
 
 // Load scope-config for MMR + Decay settings
 let _scopeConfig = {};

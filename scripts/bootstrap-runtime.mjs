@@ -4,11 +4,23 @@ import {
   getRuntimePaths,
 } from "./runtime-common.mjs";
 import { homedir } from "node:os";
-const SHARED = process.env.OPENVIKING_HOME || `${homedir()}/.openviking`;
-const { resolveScopes } = await import(`${SHARED}/scope-resolver.mjs`);
+import { pathToFileURL } from "node:url";
 import { loadConfig } from "./config.mjs";
 
+const SHARED = process.env.OPENVIKING_HOME || `${homedir()}/.openviking`;
+
+async function loadScopeResolver() {
+  try {
+    const modUrl = pathToFileURL(`${SHARED}/scope-resolver.mjs`).href;
+    const mod = await import(modUrl);
+    return mod.resolveScopes;
+  } catch {
+    return () => ({ scopes: [], targetUris: [], projectSlug: null });
+  }
+}
+
 async function checkProjectContent() {
+  const resolveScopes = await loadScopeResolver();
   const cwd = process.cwd();
   const { projectSlug } = resolveScopes(cwd);
   if (!projectSlug) return; // not in a project

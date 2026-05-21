@@ -50,7 +50,7 @@ test("local mode reads apiKey and port fallback from ov.conf", () => {
 
     const cfg = withEnv(
       {
-        OPENVIKING_CC_CONFIG_FILE: clientConfigPath,
+        OPENVIKING_HOOK_CONFIG_FILE: clientConfigPath,
         OPENVIKING_CONFIG_FILE: serverConfigPath,
       },
       () => loadConfig(),
@@ -85,7 +85,7 @@ test("remote mode uses client config baseUrl and apiKey", () => {
 
     const cfg = withEnv(
       {
-        OPENVIKING_CC_CONFIG_FILE: clientConfigPath,
+        OPENVIKING_HOOK_CONFIG_FILE: clientConfigPath,
         OPENVIKING_CONFIG_FILE: serverConfigPath,
       },
       () => loadConfig(),
@@ -109,7 +109,7 @@ test("local mode falls back to default port when ov.conf is absent", () => {
 
     const cfg = withEnv(
       {
-        OPENVIKING_CC_CONFIG_FILE: clientConfigPath,
+        OPENVIKING_HOOK_CONFIG_FILE: clientConfigPath,
         OPENVIKING_CONFIG_FILE: missingServerConfigPath,
       },
       () => loadConfig(),
@@ -135,7 +135,7 @@ test("string values support ${ENV_VAR} expansion", () => {
 
     const cfg = withEnv(
       {
-        OPENVIKING_CC_CONFIG_FILE: clientConfigPath,
+        OPENVIKING_HOOK_CONFIG_FILE: clientConfigPath,
         OV_TEST_BASE_URL: "https://remote.example.com",
         OV_TEST_API_KEY: "env-api-key",
         OV_TEST_LOG_DIR: join(dir, "logs"),
@@ -169,7 +169,7 @@ test("remote mode requires baseUrl in client config", () => {
         cwd: process.cwd(),
         env: {
           ...process.env,
-          OPENVIKING_CC_CONFIG_FILE: clientConfigPath,
+          OPENVIKING_HOOK_CONFIG_FILE: clientConfigPath,
         },
         encoding: "utf8",
       },

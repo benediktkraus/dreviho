@@ -1,5 +1,10 @@
 # OpenViking Memory Hooks
 
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/benediktkraus/openviking-hooks?style=flat)](https://github.com/benediktkraus/openviking-hooks/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/benediktkraus/openviking-hooks)](https://github.com/benediktkraus/openviking-hooks/commits/main)
+[![Node](https://img.shields.io/badge/node-%3E%3D18-green.svg)](https://nodejs.org)
+
 Auto-recall + auto-capture for AI coding assistants. One memory pool, four CLIs, zero config drift.
 
 Works with [Claude Code](https://github.com/anthropics/claude-code) · [Codex CLI](https://github.com/openai/codex) · [Gemini CLI](https://github.com/google-gemini/gemini-cli) · [OpenClaw](https://github.com/openclaw/openclaw)

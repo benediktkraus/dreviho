@@ -1,0 +1,68 @@
+name: Daily Viking
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+jobs:
+  update-art:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pick today's Viking
+        run: |
+          DAY=$(date +%j)
+          COUNT=$(jq length .github/ascii-art/vikings.json)
+          INDEX=$((DAY % COUNT))
+          ART=$(jq -r ".[$INDEX].art" .github/ascii-art/vikings.json)
+          ID=$(jq -r ".[$INDEX].id" .github/ascii-art/vikings.json)
+          # Replace art block in README between markers
+          python3 -c "
+          import re
+          with open('README.md') as f:
+              content = f.read()
+          pattern = r'(\`\`\`\n).*?(\n\`\`\`\n\n\[!\[License\])'
+          replacement = r'\1$(echo "$ART" | sed 's/\\/\\\\/g' | sed ':a;N;$!ba;s/\n/\\n/g')\2'
+          # Simpler: just replace between first ``` and ``` before badges
+          lines = content.split('\n')
+          in_art = False
+          out = []
+          for line in lines:
+              if line == '\`\`\`' and not in_art:
+                  in_art = True
+                  out.append(line)
+                  continue
+              if line == '\`\`\`' and in_art:
+                  in_art = False
+                  out.append(line)
+                  continue
+              if not in_art:
+                  out.append(line)
+          with open('README.md', 'w') as f:
+              f.write('\n'.join(out))
+          "
+          # Now insert the new art
+          python3 << PYEOF
+          import json
+          with open('.github/ascii-art/vikings.json') as f:
+              arts = json.load(f)
+          day = int('$(date +%j)')
+          art = arts[day % len(arts)]['art']
+          with open('README.md') as f:
+              content = f.read()
+          # Find first ``` block and replace its content
+          first = content.index('\`\`\`\n') + 4
+          second = content.index('\n\`\`\`\n', first)
+          new_content = content[:first] + art + content[second:]
+          with open('README.md', 'w') as f:
+              f.write(new_content)
+          PYEOF
+          echo "Today's Viking: $ID (index $INDEX)"
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git diff --cached --quiet || git commit -m "art: daily viking rotation"
+          git push

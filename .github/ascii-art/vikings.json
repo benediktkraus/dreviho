@@ -1,0 +1,30 @@
+[
+  {
+    "id": "dreaming",
+    "art": "                          .  *  .\n                       .    /\\    .\n                      .    /  \\    .\n                     ____/    \\____\n                    /    \\    /    \\\n                   / ZZZZ \\  / )))  \\\n                  |  ====  \\/  ===   |       \"I hook into your memories\n                  |  \\  /  /\\  \\  /  |        while you sleep...\"\n                   \\  \\/  /  \\  \\/  /\n                    \\____/    \\____/\n               _____|    |  |    |_____\n              /     |    |  |    |     \\\n        ~~~~~/ HOOK |    |  |    | HOOK \\~~~~~\n       ~~~~~/ ~~~~~~|    |  |    |~~~~~~ \\~~~~~\n      ~~~~~/  RECALL|    |__|    |CAPTURE \\~~~~~\n     ~~~~~/  ~~~~~~~|   /    \\   |~~~~~~~~ \\~~~~\n          |  REASON |  / (OV) \\  | MERGE   |\n     /^^^^|  ~~~~~~~| /________\\ |~~~~~~~~~|^^^^\\\n    | HOOK|         |/  VIKING  \\|         |HOOK |\n    | ~~~~|  SCOPE  |  MEMORIES  |  DECAY  |~~~~ |\n    |     |  ~~~~~~~|  ~~~~~~~~  |~~~~~~~~~|     |\n     \\....|_________|____________|_________|..../\n                    |            |\n              [Claude Code] [Codex] [Gemini] [OpenClaw]"
+  },
+  {
+    "id": "fishing",
+    "art": "         ,_\n        / _\\\n       | / \\\\\n       |/   \\\\        The Viking doesn't grep.\n      /|     \\\\       He hooks.\n     / |  ^   ||\n    |  | (o)  ||  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    |  |  v   || /   hook 1: RECALL memories    /\n     \\ | ---  ||/   hook 2: CAPTURE decisions   /\n      \\|     /|    hook 3: REASON about them   /\n       |____/ |   hook 4: MERGE duplicates    /\n       | || | |  hook 5: DECAY old ones       /\n       | || | | hook 6: SCOPE by project     /\n      _| || |_|hook 7: LINK to context      /\n     (__)||(__) ~~~~~~~~~~~~~~~~~~~~~~~~~/\n        ||     |\n    ~~~~||~~~~~|~~~~~~~~~~~~~~~~~~~~~~~~~\n    ~~~~||~~~~~|~~~~~ the memory fjord ~~\n    ~~~~~~~~~~~~ OpenViking Server :1933"
+  },
+  {
+    "id": "longship",
+    "art": "                         |\\    |\\    |\\\n                         | \\   | \\   | \\\n          DREVIHO        |R \\  |E \\  |C \\\n     Dreaming Viking     |EC\\  |AS\\  |AP\\\n          Hooks          |ALL\\ |SON\\ |TURE\\\n                         |   \\|   \\|    \\\n    ~~~~~~~~~~~~~~~~~~~~~|              |~~~~~\n    ~~  _______________/                \\~~\n    ~ /  MEMORIES    / SCOPE  MERGE     \\~~\n    ~/  DECISIONS   / DECAY   RANK  MMR  \\~\n    / PREFERENCES  / DEDUP   CITE  LINK   \\\n   /_______________\\_________________________\\\n   \\               OPENVIKING                /\n    \\_____/\\_____/\\_____/\\_____/\\_____/\\_____/\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n       Claude Code | Codex | Gemini CLI | OpenClaw"
+  },
+  {
+    "id": "helmet",
+    "art": "              .-----.\n             /   H   \\\n            / O     O \\\n           |  O  K  O  |       D R E V I H O\n           |   S   S   |       ~~~~~~~~~~~~~~~\n            \\  \\   /  /        Dreaming Viking Hooks\n             \\  | |  /\n              \\ | | /          Your AI forgets nothing.\n        _______\\|_|/_______    Your code hides nothing.\n       |                   |   Your context drifts nowhere.\n       | RECALL  | CAPTURE |\n       | REASON  | MERGE   |   7 hooks. 4 CLIs. 1 Viking.\n       | SCOPE   | DECAY   |\n       | DEDUP   | CITE    |   He dreams about your code\n       | LINK    | RANK    |   so you don't have to.\n       |_________|_________|"
+  },
+  {
+    "id": "runes",
+    "art": "    +--+--+--+--+--+--+--+--+--+--+--+--+\n    | D| R| E| V| I| H| O|  |  |  |  |  |\n    +--+--+--+--+--+--+--+--+--+--+--+--+\n    |  Dreaming  |  Viking  |   Hooks   |\n    +--+--+--+--+--+--+--+--+--+--+--+--+\n\n          /\\          Memory hooks that\n         /  \\         never sleep.\n        / __ \\        \n       / /  \\ \\       RECALL what matters.\n      / / ZZ \\ \\      CAPTURE what counts.\n     / /______\\ \\     REASON about both.\n    /   ||  ||   \\    SCOPE by context.\n   / HOOK|  |HOOK \\   MERGE duplicates.\n  /______|__|______\\  DECAY the stale.\n         ||            LINK everything.\n    ~~~~~||~~~~~\n    ~~ VIKING ~~       4 CLIs share 1 brain.\n    ~~ MEMORY ~~       The Viking remembers\n    ~~~~~~~~~~~~       what you forget."
+  },
+  {
+    "id": "hooker",
+    "art": "                    ____\n                   /    \\\n                  | (oo) |     \"They call us hookers.\n                  |  \\/  |      We prefer 'memory\n                   \\____/       professionals.'\"\n                    |  |\n              .-----|  |-----.\n             /  HOOK|  |HOOK  \\\n            / RECALL|  |CAPTURE\\\n           / REASON |  | MERGE  \\\n          / SCOPE   |  |  DECAY  \\\n         / DEDUP    |  |   CITE   \\\n        / LINK      |  |    RANK   \\\n       /____________|__|____________\\\n                    |  |\n               _____|  |_____\n              |   VIKING    |\n              |   MEMORY    |\n              |   SERVER    |\n              |_____________|\n                 :1933"
+  },
+  {
+    "id": "constellation",
+    "art": "       *  RECALL  *          *  CAPTURE  *\n        \\        /            \\          /\n         \\      /              \\        /\n    *-----+----*-----MERGE------+------*\n          |    |                |      |\n       REASON  |             SCOPE    |\n          |    |                |     |\n    *-----+----*-----DECAY------+-----*\n         /      \\              /       \\\n        /  DEDUP \\            / CITE    \\\n       *          *          *     RANK  *\n    \n             D  R  E  V  I  H  O\n          Dreaming Viking Hooks\n    \n         The Viking constellation.\n       7 hooks orbiting 1 memory.\n      4 CLIs gazing at the same sky."
+  }
+]

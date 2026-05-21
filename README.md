@@ -1,11 +1,38 @@
-# OpenViking Memory Hooks
+# DREVIHO — Dreaming Viking Hooks
+
+```
+                          .  *  .
+                       .    /\    .
+                      .    /  \    .
+                     ____/    \____
+                    /    \    /    \
+                   / ZZZZ \  / )))  \
+                  |  ====  \/  ===   |       "I hook into your memories
+                  |  \  /  /\  \  /  |        while you sleep..."
+                   \  \/  /  \  \/  /
+                    \____/    \____/
+               _____|    |  |    |_____
+              /     |    |  |    |     \
+        ~~~~~/ HOOK |    |  |    | HOOK \~~~~~
+       ~~~~~/ ~~~~~~|    |  |    |~~~~~~ \~~~~~
+      ~~~~~/  RECALL|    |__|    |CAPTURE \~~~~~
+     ~~~~~/  ~~~~~~~|   /    \   |~~~~~~~~ \~~~~
+          |  REASON |  / (OV) \  | MERGE   |
+     /^^^^|  ~~~~~~~| /________\ |~~~~~~~~~|^^^^\
+    | HOOK|         |/  VIKING  \|         |HOOK |
+    | ~~~~|  SCOPE  |  MEMORIES  |  DECAY  |~~~~ |
+    |     |  ~~~~~~~|  ~~~~~~~~  |~~~~~~~~~|     |
+     \....|_________|____________|_________|..../
+                    |            |
+              [Claude Code] [Codex] [Gemini] [OpenClaw]
+```
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/benediktkraus/openviking-hooks?style=flat)](https://github.com/benediktkraus/openviking-hooks/stargazers)
-[![Last commit](https://img.shields.io/github/last-commit/benediktkraus/openviking-hooks)](https://github.com/benediktkraus/openviking-hooks/commits/main)
+[![Stars](https://img.shields.io/github/stars/benediktkraus/dreviho?style=flat)](https://github.com/benediktkraus/dreviho/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/benediktkraus/dreviho)](https://github.com/benediktkraus/dreviho/commits/main)
 [![Node](https://img.shields.io/badge/node-%3E%3D18-green.svg)](https://nodejs.org)
 
-Auto-recall + auto-capture for AI coding assistants. One memory pool, four CLIs, zero config drift.
+Auto-recall + auto-capture + reasoning daemon for AI coding assistants. One memory pool, four CLIs, zero config drift. The Viking dreams about your code while you sleep.
 
 Works with [Claude Code](https://github.com/anthropics/claude-code) · [Codex CLI](https://github.com/openai/codex) · [Gemini CLI](https://github.com/google-gemini/gemini-cli) · [OpenClaw](https://github.com/openclaw/openclaw)
 
@@ -82,8 +109,8 @@ You type a prompt
 
 ```bash
 # Clone
-git clone https://github.com/benediktkraus/openviking-hooks.git
-cd openviking-hooks
+git clone https://github.com/benediktkraus/dreviho.git
+cd dreviho
 
 # Install (local OV server)
 ./install.sh all

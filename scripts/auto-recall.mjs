@@ -318,7 +318,7 @@ async function resolveTargetUri(targetUri) {
 
 async function searchScope(query, targetUri, limit, since = null) {
   const resolvedUri = await resolveTargetUri(targetUri);
-  const body = { query, target_uri: resolvedUri, limit, score_threshold: 0.30, include_provenance: true };
+  const body = { query, target_uri: resolvedUri, limit, score_threshold: 0.15, include_provenance: true };
   if (since) { body.since = since; body.time_field = "created_at"; }
   const result = await fetchJSON("/api/v1/search/find", {
     method: "POST",

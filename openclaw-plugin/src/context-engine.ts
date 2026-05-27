@@ -256,11 +256,18 @@ export class OpenVikingContextEngine implements ContextEngine {
     }
 
     if (!merged) {
+      // Add project scope prefix if available
+      let scopedText = decision.text;
+      await loadSharedModules();
+      if (_resolveScopes) {
+        const { projectSlug } = _resolveScopes(process.cwd());
+        if (projectSlug) scopedText = `[project:${projectSlug}] ${decision.text}`;
+      }
       // Normal capture: session → message → extract → delete
       const sessionId = await this.client.sessionCreate();
       if (sessionId) {
         try {
-          await this.client.sessionAddMessage(sessionId, "user", decision.text);
+          await this.client.sessionAddMessage(sessionId, "user", scopedText);
           await this.client.sessionExtract(sessionId);
         } finally {
           await this.client.sessionDelete(sessionId);

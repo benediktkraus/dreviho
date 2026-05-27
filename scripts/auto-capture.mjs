@@ -129,6 +129,11 @@ const SUBSTANCE_SIGNALS = [
   /\b(fehler|error|crash|broken|kaputt|fail|timeout|refused|denied|missing|wrong)\b/i,
   /\b(user|admin|kunde|client|api|endpoint|database|server|container|service)\b/i,
   /\b(ich (will|mach|hab|bin)|i (want|need|have|am|did|found|noticed))\b/i,
+  /\b(nicht so|genau so|exactly|lieber|stattdessen|instead|richtig so|falsch|wrong approach)\b/i,
+  /\b(statt|instead of|rather than|architektur|architecture|chosen|selected|pattern|convention)\b/i,
+  /\b(requires|needs|limitation|constraint|braucht|workaround|incompatible)\b/i,
+  /\b(phase|release|sprint|milestone|status|roadmap|priorit.t|priority|deadline)\b/i,
+  /\b(gelernt|learned|learning|erkenntnis|insight|discovery|herausgefunden|figured out)\b/i,
 ];
 
 const RELEVANT_MEMORIES_BLOCK_RE = /<relevant-memories>[\s\S]*?<\/relevant-memories>/gi;
@@ -178,7 +183,9 @@ function shouldCapture(text) {
   }
 
   const words = normalized.split(/\s+/).length;
-  if (words < 8) return { capture: false, reason: "too_short_semantic", text: normalized };
+  const DECISION_SHORT_RE = /\b(entscheidung|decision|prefer|bevorzug|statt|instead|nie wieder|never again|immer|always|lieber)\b/i;
+  const minWords = DECISION_SHORT_RE.test(normalized) ? 5 : 8;
+  if (words < minWords) return { capture: false, reason: "too_short_semantic", text: normalized };
 
   const CODE_BLOCK_RE = /```[\s\S]*?```/g;
   const textWithoutCode = normalized.replace(CODE_BLOCK_RE, " ");
@@ -422,10 +429,18 @@ async function main() {
     }
   } catch { /* merge check failed, proceed with normal capture */ }
 
+  // Add project scope prefix if in a project directory
+  let scopedText = decision.text;
+  const cwdForScope = process.cwd();
+  const projectScopeMatch = cwdForScope.match(/\/projects\/([^/]+)/);
+  if (projectScopeMatch) {
+    scopedText = `[project:${projectScopeMatch[1]}] ${decision.text}`;
+  }
+
   // Send to OpenViking (skip if merged into existing memory)
   const result = merged
     ? { ok: true, count: 0, merged: true }
-    : await captureToOpenViking(decision.text);
+    : await captureToOpenViking(scopedText);
   log("openviking_capture", { sessionCreated: result.ok, extractedCount: result.count || 0, merged });
 
   // Record Used: report which recalled memories were in context this session
@@ -488,12 +503,114 @@ async function main() {
   await saveState(sessionId, { capturedTurnCount: allTurns.length });
   log("state_update", { newCapturedTurnCount: allTurns.length });
 
-  if (result.ok && result.count > 0) {
-    log("done", { captureTurns: captureTurns.length, extractedCount: result.count });
-    approve(`captured ${captureTurns.length} turns, extracted ${result.count} memories`);
+  // Sync local memory files to OpenViking (CC, Codex, Gemini all write local .md files)
+  let syncCount = 0;
+  try {
+    syncCount = await syncLocalMemories(sessionId);
+  } catch (err) {
+    logError("memory_sync", err);
+  }
+
+  if (result.ok && (result.count > 0 || syncCount > 0)) {
+    log("done", { captureTurns: captureTurns.length, extractedCount: result.count, syncedFiles: syncCount });
+    approve(`captured ${captureTurns.length} turns, extracted ${result.count} memories, synced ${syncCount} local files`);
   } else {
     approve();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Local Memory File Sync → OpenViking
+// ---------------------------------------------------------------------------
+
+const MEMORY_SYNC_STATE_DIR = join(tmpdir(), "openviking-cc-memory-sync");
+
+function resolveMemoryDir() {
+  const agentId = (process.env.OPENVIKING_AGENT_ID || "").trim();
+  const cwd = process.cwd();
+  if (agentId === "codex") {
+    return join(homedir(), ".codex", "memory");
+  }
+  if (agentId === "gemini-cli") {
+    return join(homedir(), ".gemini", "memory");
+  }
+  const sanitizedCwd = cwd.replace(/\//g, "-").replace(/^-/, "");
+  return join(homedir(), ".claude", "projects", sanitizedCwd, "memory");
+}
+
+function parseFrontmatter(content) {
+  const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (!match) return { meta: {}, body: content };
+  const meta = {};
+  for (const line of match[1].split("\n")) {
+    const kv = line.match(/^(\w+):\s*(.+)$/);
+    if (kv) meta[kv[1]] = kv[2].trim();
+  }
+  return { meta, body: match[2] };
+}
+
+function memoryUri(filename, type, projectSlug) {
+  const name = filename.replace(/\.md$/, "");
+  if (type === "project" && projectSlug) {
+    return `viking://user/benedikt/memories/projects/${projectSlug}/${name}.md`;
+  }
+  if (type === "feedback" || type === "user" || type === "reference") {
+    return `viking://user/benedikt/memories/${type}/${name}.md`;
+  }
+  if (projectSlug) {
+    return `viking://user/benedikt/memories/projects/${projectSlug}/${name}.md`;
+  }
+  return `viking://user/benedikt/memories/global/${name}.md`;
+}
+
+async function syncLocalMemories(sessionId) {
+  const memDir = resolveMemoryDir();
+  let files;
+  try {
+    const { readdirSync, statSync } = await import("node:fs");
+    files = readdirSync(memDir).filter(f => f.endsWith(".md") && f !== "MEMORY.md");
+  } catch {
+    return 0;
+  }
+  if (files.length === 0) return 0;
+
+  const { readFileSync, writeFileSync, mkdirSync, statSync } = await import("node:fs");
+  mkdirSync(MEMORY_SYNC_STATE_DIR, { recursive: true });
+  const stateFile = join(MEMORY_SYNC_STATE_DIR, `${sessionId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
+  let syncState = {};
+  try { syncState = JSON.parse(readFileSync(stateFile, "utf-8")); } catch { /* first sync */ }
+
+  const cwd = process.cwd();
+  const projectSlug = cwd.match(/\/projects\/([^/]+)/)?.[1] || null;
+  let synced = 0;
+
+  for (const file of files) {
+    const filePath = join(memDir, file);
+    let mtime;
+    try { mtime = statSync(filePath).mtimeMs; } catch { continue; }
+    if (syncState[file] && syncState[file] >= mtime) continue;
+
+    try {
+      const content = readFileSync(filePath, "utf-8");
+      const { meta } = parseFrontmatter(content);
+      const uri = memoryUri(file, meta.type || "", projectSlug);
+      const result = await fetchJSON("/api/v1/content/write", {
+        method: "POST",
+        body: JSON.stringify({ uri, content, mode: "write" }),
+      });
+      if (result) {
+        syncState[file] = mtime;
+        synced++;
+        log("memory_sync_file", { file, uri, type: meta.type || "unknown" });
+      }
+    } catch { /* best effort per file */ }
+  }
+
+  if (synced > 0) {
+    try { writeFileSync(stateFile, JSON.stringify(syncState)); } catch { /* best effort */ }
+    log("memory_sync_done", { synced, total: files.length, projectSlug });
+  }
+  return synced;
 }
 
 main().catch((err) => { logError("uncaught", err); approve(); });

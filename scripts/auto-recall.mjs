@@ -318,7 +318,7 @@ async function resolveTargetUri(targetUri) {
 
 async function searchScope(query, targetUri, limit, since = null) {
   const resolvedUri = await resolveTargetUri(targetUri);
-  const body = { query, target_uri: resolvedUri, limit, score_threshold: 0, include_provenance: true };
+  const body = { query, target_uri: resolvedUri, limit, score_threshold: 0.30, include_provenance: true };
   if (since) { body.since = since; body.time_field = "created_at"; }
   const result = await fetchJSON("/api/v1/search/find", {
     method: "POST",
@@ -337,6 +337,9 @@ const KEYWORD_STOP = new Set([
   "you","can","will","should","would","could","have","has","had","been","being",
   "nicht","und","oder","der","die","das","ein","eine","ist","sind","war","hat",
   "wie","was","wer","wo","wann","warum","bitte","mach","mal","noch","auch",
+  "den","dem","du","ich","wir","sie","er","es","auf","mit","von","zu","für",
+  "an","in","bei","ja","hast","denn","aber","dann","doch","nur","schon",
+  "dass","wenn","weil","hier","da","so","sehr","mehr","kann","wird","haben",
 ]);
 
 function extractKeywords(text) {
@@ -549,7 +552,7 @@ async function main() {
         const prevSet = new Set(prevUris);
         const overlap = currentUris.filter(u => prevSet.has(u)).length;
         const overlapRatio = overlap / Math.max(currentUris.length, 1);
-        if (overlapRatio > 0.8 && currentUris.length === prevUris.length) {
+        if (overlapRatio > 0.95 && currentUris.length === prevUris.length) {
           log("stale_dedup", { overlapRatio, skipped: true });
           writeFileSync(urisFile, JSON.stringify(currentUris));
           approve("<relevant-memories>\nPrevious memory context still active (same memories recalled). Active scopes unchanged.\n</relevant-memories>");

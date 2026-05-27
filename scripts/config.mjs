@@ -170,7 +170,7 @@ export function loadConfig() {
     // Recall
     autoRecall: file.autoRecall !== false,
     recallLimit: Math.max(1, Math.floor(num(file.recallLimit, 6))),
-    scoreThreshold: Math.min(1, Math.max(0, num(file.scoreThreshold, 0.01))),
+    scoreThreshold: Math.min(1, Math.max(0, num(file.scoreThreshold, 0.35))),
     minQueryLength: Math.max(1, Math.floor(num(file.minQueryLength, 3))),
     logRankingDetails: bool(file.logRankingDetails),
 

@@ -11,6 +11,9 @@ const KEYWORD_STOP = new Set([
   "you","can","will","should","would","could","have","has","had","been","being",
   "nicht","und","oder","der","die","das","ein","eine","ist","sind","war","hat",
   "wie","was","wer","wo","wann","warum","bitte","mach","mal","noch","auch",
+  "den","dem","du","ich","wir","sie","er","es","auf","mit","von","zu","für",
+  "an","in","bei","ja","hast","denn","aber","dann","doch","nur","schon",
+  "dass","wenn","weil","hier","da","so","sehr","mehr","kann","wird","haben",
 ]);
 
 export function extractKeywords(text: string): string[] {

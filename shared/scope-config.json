@@ -1,10 +1,6 @@
 {
   "personal_projects": [],
-  "infra_patterns": [
-    "docker",
-    "infra",
-    "monitoring"
-  ],
+  "infra_patterns": ["docker", "infra", "monitoring"],
   "project_base_paths": [],
   "scopes": {
     "system": {
@@ -36,23 +32,21 @@
     "auto_captured": 1.0,
     "verified_recall_threshold": 5
   },
-  "compaction": {
-    "enabled": true,
-    "strategy": "caveman",
-    "strip_code_blocks": true,
-    "strip_tables": true,
-    "collapse_whitespace": true
-  },
   "mmr": {
     "enabled": true,
     "lambda": 0.7
   },
   "decay": {
     "enabled": true,
-    "halfLifeDays": 30,
-    "memoryMaxAgeDays": 90,
-    "evergreen": [
-      "viking://resources/"
-    ]
+    "halfLifeDays": 90,
+    "memoryMaxAgeDays": 180,
+    "evergreen": ["viking://resources/"]
+  },
+  "compaction": {
+    "enabled": true,
+    "strategy": "caveman",
+    "strip_code_blocks": true,
+    "strip_tables": true,
+    "collapse_whitespace": true
   }
 }

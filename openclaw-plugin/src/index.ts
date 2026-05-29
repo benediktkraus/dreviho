@@ -15,7 +15,7 @@ export default definePluginEntry({
   description: "Full-featured OV context engine with hybrid search, 5-scope system, content merge, record used, auto-linking, transcript maintenance",
   register(api) {
     const result = registerContextEngine("openviking-enhanced", () => {
-      return new OpenVikingContextEngine();
+      return new OpenVikingContextEngine(api.logger);
     });
     if (result.ok) {
       api.logger.info("openviking-enhanced: context engine registered");

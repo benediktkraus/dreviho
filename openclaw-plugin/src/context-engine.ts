@@ -29,6 +29,7 @@ import { loadConfig } from "./config.js";
 import { searchScoped } from "./hybrid-search.js";
 import { buildScopeHints, buildMemoryBlock } from "./scope-hints.js";
 import { shouldCapture, extractMessageText } from "./text-utils.js";
+import { logEvent, summarizeUris, type OVLogger } from "./logging.js";
 
 // Shared modules loaded dynamically (ESM, from OPENVIKING_HOME)
 import { homedir } from "node:os";
@@ -74,12 +75,14 @@ export class OpenVikingContextEngine implements ContextEngine {
   };
 
   private client: OVClient;
+  private logger?: OVLogger;
   private recalledUris: string[] = [];
   private prevRecalledUris: string[] = [];
   private cfg = loadConfig();
 
-  constructor() {
-    this.client = new OVClient(this.cfg);
+  constructor(logger?: OVLogger) {
+    this.logger = logger;
+    this.client = new OVClient(this.cfg, logger);
   }
 
   // =========================================================================
@@ -139,23 +142,63 @@ export class OpenVikingContextEngine implements ContextEngine {
     await loadSharedModules();
 
     const query = (params.prompt || "").trim();
+    this.log("recall_start", {
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      queryChars: query.length,
+      messageCount: params.messages.length,
+      tokenBudget: params.tokenBudget,
+    });
     if (!query || query.length < this.cfg.minQueryLength) {
+      this.log("recall_skip", {
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
+        reason: "query_too_short",
+        queryChars: query.length,
+      });
       return { messages: params.messages, estimatedTokens: 0 };
     }
 
     const healthy = await this.client.health();
-    if (!healthy) return { messages: params.messages, estimatedTokens: 0 };
+    if (!healthy) {
+      this.log("recall_skip", {
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
+        reason: "ov_unreachable",
+      }, "warn");
+      return { messages: params.messages, estimatedTokens: 0 };
+    }
 
     // Resolve scopes
     const cwd = process.cwd();
     const scopeInfo = _resolveScopes
       ? _resolveScopes(cwd)
       : { scopes: ["system", "knowledge"], targetUris: ["viking://user/memories/", "viking://agent/memories/"], projectSlug: null };
+    this.log("recall_scopes", {
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      scopes: scopeInfo.scopes,
+      targetUriCount: scopeInfo.targetUris.length,
+      targetUriSamples: scopeInfo.targetUris.slice(0, 10),
+      projectSlug: scopeInfo.projectSlug,
+    });
 
     // Hybrid search
     const candidateLimit = Math.max(this.cfg.recallLimit * 4, 20);
     const allMemories = await searchScoped(this.client, query, scopeInfo.targetUris, candidateLimit);
+    this.log("recall_candidates", {
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      candidateLimit,
+      candidateCount: allMemories.length,
+      ...summarizeUris(allMemories.map((memory) => memory.uri), 8),
+    });
     if (allMemories.length === 0) {
+      this.log("recall_empty", {
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
+        reason: "no_candidates",
+      });
       return { messages: params.messages, estimatedTokens: 0 };
     }
 
@@ -170,6 +213,13 @@ export class OpenVikingContextEngine implements ContextEngine {
       : processed.slice(0, this.cfg.recallLimit);
 
     if (memories.length === 0) {
+      this.log("recall_empty", {
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
+        reason: "no_selected_memories",
+        processedCount: processed.length,
+        scoreThreshold: this.cfg.scoreThreshold,
+      });
       return { messages: params.messages, estimatedTokens: 0 };
     }
 
@@ -183,10 +233,20 @@ export class OpenVikingContextEngine implements ContextEngine {
       const ratio = overlap / Math.max(this.recalledUris.length, 1);
       if (ratio > 0.8 && this.recalledUris.length === this.prevRecalledUris.length) {
         this.prevRecalledUris = this.recalledUris;
+        const addition = "<relevant-memories>\nPrevious memory context still active (same memories recalled). Active scopes unchanged.\n</relevant-memories>";
+        this.log("recall_injected", {
+          sessionId: params.sessionId,
+          sessionKey: params.sessionKey,
+          selectedCount: memories.length,
+          staleDedup: true,
+          estimatedTokens: 50,
+          systemPromptAdditionChars: addition.length,
+          ...summarizeUris(this.recalledUris),
+        });
         return {
           messages: params.messages,
           estimatedTokens: 50,
-          systemPromptAddition: "<relevant-memories>\nPrevious memory context still active (same memories recalled). Active scopes unchanged.\n</relevant-memories>",
+          systemPromptAddition: addition,
         };
       }
     }
@@ -202,6 +262,12 @@ export class OpenVikingContextEngine implements ContextEngine {
         const suffix = citationsOn ? `\n  ${cite(item)}` : "";
         if (item.level === 2) {
           const content = await this.client.contentRead(item.uri);
+          this.log("memory_content_read", {
+            sessionId: params.sessionId,
+            sessionKey: params.sessionKey,
+            uri: item.uri,
+            ok: Boolean(content),
+          }, content ? "info" : "warn");
           if (content) return `- [${label}] ${compact(content)}${suffix}`;
         }
         const fallback = (item.abstract || item.overview || item.uri || "").trim();
@@ -215,6 +281,15 @@ export class OpenVikingContextEngine implements ContextEngine {
 
     // Rough token estimate (1 token ≈ 4 chars)
     const estimatedTokens = Math.ceil(memoryBlock.length / 4);
+    this.log("recall_injected", {
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      selectedCount: memories.length,
+      estimatedTokens,
+      systemPromptAdditionChars: memoryBlock.length,
+      citationsOn,
+      ...summarizeUris(this.recalledUris),
+    });
 
     return {
       messages: params.messages, // NEVER mutate
@@ -233,25 +308,75 @@ export class OpenVikingContextEngine implements ContextEngine {
     message: AgentMessage;
     isHeartbeat?: boolean;
   }): Promise<IngestResult> {
-    if (params.isHeartbeat) return { ingested: false };
+    if (params.isHeartbeat) {
+      this.log("capture_skip", {
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
+        reason: "heartbeat",
+      });
+      return { ingested: false };
+    }
 
     const role = params.message.role;
-    if (role !== "user" && role !== "assistant") return { ingested: false };
+    if (role !== "user" && role !== "assistant") {
+      this.log("capture_skip", {
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
+        reason: "unsupported_role",
+        role,
+      });
+      return { ingested: false };
+    }
 
     const text = extractMessageText(params.message);
     const decision = shouldCapture(text, this.cfg.captureMaxLength);
-    if (!decision.capture) return { ingested: false };
+    this.log("capture_start", {
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      role,
+      textChars: text.length,
+      capture: decision.capture,
+    });
+    if (!decision.capture) {
+      this.log("capture_skip", {
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
+        reason: "capture_filter",
+        role,
+        textChars: text.length,
+      });
+      return { ingested: false };
+    }
 
     // Content Merge: check if similar memory exists
     let merged = false;
     try {
       const dupes = await this.client.searchFind(decision.text.slice(0, 500), "viking://user/memories/", 3);
+      this.log("capture_merge_check", {
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
+        dupeCount: dupes.length,
+        topScore: dupes[0]?.score,
+        topUri: dupes[0]?.uri,
+      });
       if (dupes.length > 0 && dupes[0].score >= 0.85) {
         const appendContent = `\n---\n[${new Date().toISOString().slice(0, 10)}] ${decision.text.slice(0, 1000)}`;
         const ok = await this.client.contentWrite(dupes[0].uri, appendContent, "append");
+        this.log("capture_write", {
+          sessionId: params.sessionId,
+          sessionKey: params.sessionKey,
+          mode: "append_existing_memory",
+          uri: dupes[0].uri,
+          ok,
+        }, ok ? "info" : "warn");
         if (ok) merged = true;
       }
-    } catch {
+    } catch (err) {
+      this.log("capture_merge_check_failed", {
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
+        error: (err as Error)?.name || "Error",
+      }, "warn");
       // Merge check failed — proceed with normal capture
     }
 
@@ -271,13 +396,21 @@ export class OpenVikingContextEngine implements ContextEngine {
         try {
           await this.client.sessionAddMessage(sessionId, "user", scopedText);
           const extracted = await this.client.sessionExtract(sessionId);
+          this.log("capture_extract", {
+            sessionId: params.sessionId,
+            sessionKey: params.sessionKey,
+            ovSessionId: sessionId,
+            extractedCount: extracted.length,
+            projectSlug,
+          });
           if (extracted.length === 0) {
             const date = new Date().toISOString().slice(0, 10);
             const fallbackRoot = projectSlug
               ? `viking://resources/projects/${projectSlug}/raw-captures`
               : "viking://resources/system/raw-captures";
-            await this.client.contentUpsert(
-              `${fallbackRoot}/${date}/${sessionId}.md`,
+            const fallbackUri = `${fallbackRoot}/${date}/${sessionId}.md`;
+            const ok = await this.client.contentUpsert(
+              fallbackUri,
               [
                 "# OpenClaw Auto Capture Fallback",
                 "",
@@ -287,17 +420,29 @@ export class OpenVikingContextEngine implements ContextEngine {
                 "",
               ].join("\n"),
             );
+            this.log("capture_write", {
+              sessionId: params.sessionId,
+              sessionKey: params.sessionKey,
+              mode: "raw_fallback",
+              uri: fallbackUri,
+              ok,
+            }, ok ? "info" : "warn");
           }
         } finally {
           await this.client.sessionDelete(sessionId);
         }
+      } else {
+        this.log("capture_write", {
+          sessionId: params.sessionId,
+          sessionKey: params.sessionKey,
+          mode: "session_create",
+          ok: false,
+        }, "warn");
       }
     }
 
     // Record Used: report which recalled memories were in context
-    if (this.recalledUris.length > 0) {
-      await this.client.sessionReportUsed(params.sessionId, this.recalledUris);
-    }
+    await this.reportRecalledUris(params.sessionId, params.sessionKey);
 
     // Auto-Link: detect project slug and create relation
     await loadSharedModules();
@@ -311,9 +456,22 @@ export class OpenVikingContextEngine implements ContextEngine {
           "belongs_to",
           `captured in project ${projectSlug}`,
         );
+        this.log("relation_link", {
+          sessionId: params.sessionId,
+          sessionKey: params.sessionKey,
+          source: "viking://user/memories/",
+          target: `viking://resources/projects/${projectSlug}/`,
+          type: "belongs_to",
+        });
       }
     }
 
+    this.log("capture_done", {
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      role,
+      merged,
+    });
     return { ingested: true };
   }
 
@@ -338,6 +496,12 @@ export class OpenVikingContextEngine implements ContextEngine {
       });
       if (result.ingested) count++;
     }
+    this.log("capture_batch_done", {
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      messageCount: params.messages.length,
+      ingestedCount: count,
+    });
     return { ingestedCount: count };
   }
 
@@ -357,7 +521,41 @@ export class OpenVikingContextEngine implements ContextEngine {
     runtimeContext?: ContextEngineRuntimeContext;
   }): Promise<void> {
     if (params.isHeartbeat) return;
-    // Clear recalled URIs after they've been reported via ingest()
+    const newMessages = params.messages.slice(Math.max(0, params.prePromptMessageCount));
+    this.log("after_turn", {
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      messageCount: params.messages.length,
+      prePromptMessageCount: params.prePromptMessageCount,
+      newMessageCount: newMessages.length,
+    });
+
+    if (newMessages.length > 0) {
+      await this.ingestBatch({
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
+        messages: newMessages,
+        isHeartbeat: false,
+      });
+    }
+
+    // Always record memory usage once per completed turn, even if capture skipped.
+    await this.reportRecalledUris(params.sessionId, params.sessionKey);
+  }
+
+  private log(event: string, payload: Record<string, unknown> = {}, level: "info" | "warn" | "error" | "debug" = "info"): void {
+    logEvent(this.logger, event, payload, level);
+  }
+
+  private async reportRecalledUris(sessionId: string, sessionKey?: string): Promise<void> {
+    if (this.recalledUris.length === 0) return;
+    const uris = this.recalledUris.slice();
+    await this.client.sessionReportUsed(sessionId, uris);
+    this.log("record_used", {
+      sessionId,
+      sessionKey,
+      ...summarizeUris(uris),
+    });
     this.recalledUris = [];
   }
 

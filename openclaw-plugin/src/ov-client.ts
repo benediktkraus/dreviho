@@ -4,12 +4,15 @@
  */
 
 import { loadConfig, type OVConfig } from "./config.js";
+import { logEvent, limitString, type OVLogger } from "./logging.js";
 
 export class OVClient {
   private cfg: OVConfig;
+  private logger?: OVLogger;
 
-  constructor(cfg?: OVConfig) {
+  constructor(cfg?: OVConfig, logger?: OVLogger) {
     this.cfg = cfg ?? loadConfig();
+    this.logger = logger;
   }
 
   private buildHeaders(): Record<string, string> {
@@ -26,26 +29,51 @@ export class OVClient {
   }
 
   async fetchJSON<T = unknown>(path: string, init: RequestInit = {}, timeoutMs?: number, retries = 2): Promise<T | null> {
+    const method = String(init.method ?? "GET").toUpperCase();
+    const op = classifyOperation(path, method);
     for (let attempt = 0; attempt <= retries; attempt++) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs ?? this.cfg.timeoutMs);
+      const startedAt = Date.now();
       try {
         const res = await fetch(`${this.cfg.baseUrl}${path}`, {
           ...init,
           headers: { ...this.buildHeaders(), ...(init.headers as Record<string, string> || {}) },
           signal: controller.signal,
         });
+        const body = await res.json() as Record<string, unknown>;
+        const ok = res.ok && body.status !== "error";
+        this.logApiEvent({
+          op,
+          method,
+          path,
+          status: res.status,
+          ok,
+          attempt,
+          durationMs: Date.now() - startedAt,
+        }, ok ? "info" : "warn");
         if (res.status >= 500 && attempt < retries) {
           clearTimeout(timer);
           await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
           continue;
         }
-        const body = await res.json() as Record<string, unknown>;
-        if (!res.ok || body.status === "error") return null;
+        if (!ok) return null;
         return (body.result ?? body) as T;
       } catch (err) {
         clearTimeout(timer);
-        if (attempt < retries && ((err as Error)?.name === "AbortError" || (err as NodeJS.ErrnoException)?.code === "ECONNREFUSED")) {
+        const willRetry = attempt < retries && ((err as Error)?.name === "AbortError" || (err as NodeJS.ErrnoException)?.code === "ECONNREFUSED");
+        this.logApiEvent({
+          op,
+          method,
+          path,
+          status: null,
+          ok: false,
+          attempt,
+          willRetry,
+          durationMs: Date.now() - startedAt,
+          error: (err as Error)?.name || (err as NodeJS.ErrnoException)?.code || "Error",
+        }, willRetry ? "info" : "warn");
+        if (willRetry) {
           await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
           continue;
         }
@@ -55,6 +83,13 @@ export class OVClient {
       }
     }
     return null;
+  }
+
+  private logApiEvent(payload: Record<string, unknown>, level: "info" | "warn"): void {
+    logEvent(this.logger, "ov_api", {
+      ...payload,
+      path: limitString(String(payload.path ?? ""), 180),
+    }, level);
   }
 
   async health(): Promise<boolean> {
@@ -156,6 +191,12 @@ export class OVClient {
   getConfig(): OVConfig {
     return this.cfg;
   }
+}
+
+function classifyOperation(path: string, method: string): "read" | "write" {
+  if (method === "GET") return "read";
+  if (path.includes("/search/")) return "read";
+  return "write";
 }
 
 export interface OVSearchResult {

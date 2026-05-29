@@ -385,6 +385,16 @@ function lexicalOverlapBoost(tokens, text) {
     }
     return Math.min(0.2, (matched / Math.min(tokens.length, 4)) * 0.2);
 }
+function sourceAuthorityMultiplier(item) {
+    const uri = (item.uri || "").toLowerCase();
+    if (uri.includes("/verified/"))
+        return 2.0;
+    if (item.category === "memory")
+        return 1.5;
+    if (item.category === "skill")
+        return 1.2;
+    return 1.0;
+}
 function rankForInjection(item, query) {
     const baseScore = clampScore(item.score);
     const abstract = (item.abstract ?? item.overview ?? "").trim();
@@ -393,7 +403,18 @@ function rankForInjection(item, query) {
     const eventBoost = query.wantsTemporal && (cat === "events" || item.uri.includes("/events/")) ? 0.1 : 0;
     const prefBoost = query.wantsPreference && (cat === "preferences" || item.uri.includes("/preferences/")) ? 0.08 : 0;
     const overlapBoost = lexicalOverlapBoost(query.tokens, `${item.uri} ${abstract}`);
-    return baseScore + leafBoost + eventBoost + prefBoost + overlapBoost;
+    const authMul = sourceAuthorityMultiplier(item);
+    const authorityBoost = baseScore * (authMul - 1.0);
+    let decayFactor = 1.0;
+    if (!item.uri.startsWith("viking://resources/")) {
+        const updatedAt = item.updated_at || item.created_at;
+        if (typeof updatedAt === "string") {
+            const ageDays = (Date.now() - new Date(updatedAt).getTime()) / 86_400_000;
+            if (ageDays > 0)
+                decayFactor = Math.pow(0.5, ageDays / 90);
+        }
+    }
+    return (baseScore + leafBoost + eventBoost + prefBoost + overlapBoost + authorityBoost) * decayFactor;
 }
 // MMR Diversity — Jaccard-based near-duplicate reduction
 function tokenize(text) {
@@ -481,19 +502,106 @@ function pickMemoriesForInjection(items, limit, queryText) {
     return picked;
 }
 // ---------------------------------------------------------------------------
-// Shared search helpers
+// Hybrid Search — Semantic + Grep + RRF Merge
 // ---------------------------------------------------------------------------
-async function searchBothScopes(client, query, limit) {
-    const [userSettled, agentSettled] = await Promise.allSettled([
-        client.find(query, { targetUri: "viking://user/memories", limit, scoreThreshold: 0, since: "90d" }),
-        client.find(query, { targetUri: "viking://agent/memories", limit, scoreThreshold: 0, since: "90d" }),
+const KEYWORD_STOP = new Set([
+    "what", "when", "where", "which", "who", "whom", "whose", "why", "how", "did", "does",
+    "is", "are", "was", "were", "the", "and", "for", "with", "from", "that", "this", "your",
+    "you", "can", "will", "should", "would", "could", "have", "has", "had", "been", "being",
+    "nicht", "und", "oder", "der", "die", "das", "ein", "eine", "ist", "sind", "war", "hat",
+    "wie", "was", "wer", "wo", "wann", "warum", "bitte", "mach", "mal", "noch", "auch",
+    "den", "dem", "du", "ich", "wir", "sie", "er", "es", "auf", "mit", "von", "zu", "für",
+    "an", "in", "bei", "ja", "hast", "denn", "aber", "dann", "doch", "nur", "schon",
+    "dass", "wenn", "weil", "hier", "da", "so", "sehr", "mehr", "kann", "wird", "haben",
+]);
+function extractKeywords(text) {
+    const tokens = text.toLowerCase().match(/[a-z0-9äöüß._-]{3,}/gi) || [];
+    return [...new Set(tokens.filter(t => !KEYWORD_STOP.has(t)))].slice(0, 8);
+}
+async function grepSearch(client, keywords, limit) {
+    if (keywords.length === 0)
+        return [];
+    const pattern = keywords.slice(0, 4).join("|");
+    try {
+        const raw = await client.request("/api/v1/search/grep", {
+            method: "POST",
+            body: JSON.stringify({ pattern, uri: "viking://user/", limit }),
+        });
+        const results = Array.isArray(raw) ? raw : (raw?.matches || []);
+        return results.map((m, i) => ({
+            uri: (m.uri || m.path || `grep-${i}`),
+            score: 1.0 / (i + 1),
+            abstract: (m.snippet || m.line || m.content || "").slice(0, 500),
+            category: m.context_type || "grep",
+            level: 2,
+        }));
+    }
+    catch {
+        return [];
+    }
+}
+function rrfMerge(semanticResults, grepResults, k = 60) {
+    const scoreMap = new Map();
+    semanticResults.forEach((item, rank) => {
+        const key = item.uri;
+        const prev = scoreMap.get(key) || { item, rrfScore: 0 };
+        prev.rrfScore += 1 / (k + rank + 1);
+        scoreMap.set(key, prev);
+    });
+    grepResults.forEach((item, rank) => {
+        const key = item.uri || `grep-${rank}`;
+        const prev = scoreMap.get(key) || { item, rrfScore: 0 };
+        prev.rrfScore += 1 / (k + rank + 1);
+        if (!prev.item.uri && item.uri)
+            prev.item = item;
+        scoreMap.set(key, prev);
+    });
+    return [...scoreMap.values()]
+        .sort((a, b) => b.rrfScore - a.rrfScore)
+        .map(e => ({ ...e.item, score: e.item.score }));
+}
+function buildProjectUris(project) {
+    const uris = [
+        "viking://user/memories/",
+        "viking://agent/memories/",
+        "viking://resources/system/",
+        "viking://resources/knowledge/",
+    ];
+    if (project) {
+        uris.push(`viking://resources/projects/${project}/`);
+    }
+    return uris;
+}
+async function searchHybrid(client, query, targetUris, limit) {
+    const searchPromises = targetUris.map(uri => {
+        const isMemory = uri.includes("/memories") || uri.includes("/user/") || uri.includes("/agent/");
+        return client.find(query, {
+            targetUri: uri,
+            limit,
+            scoreThreshold: 0,
+            since: isMemory ? "90d" : undefined,
+        }).then(r => (r.memories ?? []).filter(m => m.level === 2))
+            .catch(() => []);
+    });
+    const keywords = extractKeywords(query);
+    const grepPromise = keywords.length > 0
+        ? grepSearch(client, keywords, limit)
+        : Promise.resolve([]);
+    const [resultSets, grepResults] = await Promise.all([
+        Promise.all(searchPromises),
+        grepPromise,
     ]);
-    const userResult = userSettled.status === "fulfilled" ? userSettled.value : { memories: [] };
-    const agentResult = agentSettled.status === "fulfilled" ? agentSettled.value : { memories: [] };
-    const all = [...(userResult.memories ?? []), ...(agentResult.memories ?? [])];
-    // Deduplicate by URI and keep only leaf memories
-    const unique = all.filter((m, i, self) => i === self.findIndex((o) => o.uri === m.uri));
-    return unique.filter((m) => m.level === 2);
+    const semanticAll = resultSets.flat();
+    const all = grepResults.length > 0
+        ? rrfMerge(semanticAll, grepResults)
+        : semanticAll;
+    const uriSet = new Set();
+    return all.filter(m => {
+        if (!m.uri || uriSet.has(m.uri))
+            return false;
+        uriSet.add(m.uri);
+        return true;
+    });
 }
 // ---------------------------------------------------------------------------
 // MCP Server
@@ -509,7 +617,8 @@ server.tool("memory_recall", "Search long-term memories from OpenViking. Use whe
     limit: z.number().optional().describe("Max results to return (default: 6)"),
     score_threshold: z.number().optional().describe("Min relevance score 0-1 (default: 0.01)"),
     target_uri: z.string().optional().describe("Search scope URI, e.g. viking://user/memories"),
-}, async ({ query, limit, score_threshold, target_uri }) => {
+    project: z.string().optional().describe("Project slug for scoped recall (e.g. 'heyfreya', 'dreviho')"),
+}, async ({ query, limit, score_threshold, target_uri, project }) => {
     const recallLimit = limit ?? config.recallLimit;
     const threshold = score_threshold ?? config.scoreThreshold;
     const candidateLimit = Math.max(recallLimit * 4, 20);
@@ -519,7 +628,8 @@ server.tool("memory_recall", "Search long-term memories from OpenViking. Use whe
         leafMemories = (result.memories ?? []).filter((m) => m.level === 2);
     }
     else {
-        leafMemories = await searchBothScopes(client, query, candidateLimit);
+        const uris = buildProjectUris(project || undefined);
+        leafMemories = await searchHybrid(client, query, uris, candidateLimit);
     }
     const processed = postProcessMemories(leafMemories, { limit: candidateLimit, scoreThreshold: threshold });
     const memories = pickMemoriesForInjection(processed, recallLimit, query);
@@ -607,7 +717,7 @@ server.tool("memory_forget", "Delete a memory from OpenViking. Provide an exact 
         }).filter((item) => isMemoryUri(item.uri));
     }
     else {
-        const leafMemories = await searchBothScopes(client, query, candidateLimit);
+        const leafMemories = await searchHybrid(client, query, buildProjectUris(), candidateLimit);
         candidates = postProcessMemories(leafMemories, {
             limit: candidateLimit,
             scoreThreshold: config.scoreThreshold,
@@ -677,6 +787,37 @@ server.tool("memory_search", "Search OpenViking using structural patterns (glob/
     catch (err) {
         return { content: [{ type: "text", text: `Search failed: ${err.message}` }], isError: true };
     }
+});
+// -- Tool: memory_stats -----------------------------------------------------
+server.tool("memory_stats", "Get memory database statistics — total count, scope breakdown, project-specific counts.", {
+    project: z.string().optional().describe("Optional project slug to include project-specific stats"),
+}, async ({ project }) => {
+    const scopes = [
+        { name: "user/memories", uri: "viking://user/memories/" },
+        { name: "agent/memories", uri: "viking://agent/memories/" },
+        { name: "resources/system", uri: "viking://resources/system/" },
+        { name: "resources/knowledge", uri: "viking://resources/knowledge/" },
+    ];
+    if (project) {
+        scopes.push({ name: `resources/projects/${project}`, uri: `viking://resources/projects/${project}/` });
+    }
+    const counts = await Promise.all(scopes.map(async (scope) => {
+        try {
+            const items = await client.ls(scope.uri);
+            return { scope: scope.name, count: Array.isArray(items) ? items.length : 0 };
+        }
+        catch {
+            return { scope: scope.name, count: 0 };
+        }
+    }));
+    const total = counts.reduce((sum, c) => sum + c.count, 0);
+    const lines = counts.map(c => `  ${c.scope}: ${c.count}`).join("\n");
+    return {
+        content: [{
+                type: "text",
+                text: `Memory Stats (${total} total):\n${lines}`,
+            }],
+    };
 });
 // -- Tool: convert_to_markdown (markitdown) ---------------------------------
 server.tool("convert_to_markdown", "Convert any file (PDF, DOCX, XLSX, PPTX, HTML, images, audio) to Markdown using markitdown.", {

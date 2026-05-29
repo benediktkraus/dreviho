@@ -178,6 +178,7 @@ cd /opt/openclaw/plugins/openviking-enhanced && npm install
 
 # Activate
 openclaw config set plugins.slots.contextEngine openviking-enhanced
+openclaw config set plugins.entries.openviking-enhanced.enabled true
 openclaw config set plugins.entries.openviking.enabled false
 ```
 
@@ -185,7 +186,7 @@ openclaw config set plugins.entries.openviking.enabled false
 |--------|------|
 | `bootstrap()` | Project content check + on-demand sync |
 | `assemble()` | Hybrid search → ranking → compaction → `systemPromptAddition` |
-| `ingest()` | Content merge + session/extract + record used + auto-link |
+| `ingest()` | Content merge + session/extract + raw fallback + record used + auto-link |
 | `compact()` | Delegates to OC runtime |
 | `maintain()` | Strip stale `<relevant-memories>` blocks |
 | `prepareSubagentSpawn()` / `onSubagentEnded()` | Subagent scope isolation + cleanup |
@@ -201,6 +202,7 @@ openclaw config set plugins.entries.openviking.enabled false
   "recallLimit": 10,
   "scoreThreshold": 0.1,
   "captureMode": "semantic",
+  "captureAssistantTurns": true,
   "autoRecall": true,
   "autoCapture": true,
   "debug": false

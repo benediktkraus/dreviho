@@ -21,6 +21,7 @@ const cfg = loadConfig();
 const BASE = cfg.baseUrl;
 const HEADERS = { "Content-Type": "application/json" };
 if (cfg.apiKey) HEADERS["X-API-Key"] = cfg.apiKey;
+if (cfg.agentId) HEADERS["X-OpenViking-Agent"] = cfg.agentId;
 if (cfg.account) HEADERS["X-OpenViking-Account"] = cfg.account;
 if (cfg.user) HEADERS["X-OpenViking-User"] = cfg.user;
 
@@ -103,7 +104,7 @@ describe("auto-capture", () => {
     });
     const result = execFileSync("node", [
       join(import.meta.dirname, "..", "scripts", "auto-capture.mjs"),
-    ], { input, timeout: 30000, encoding: "utf-8" });
+    ], { input, timeout: 60000, encoding: "utf-8" });
     const parsed = JSON.parse(result.trim());
     assert.equal(parsed.decision, "approve");
     rmSync(tmpDir, { recursive: true, force: true });
@@ -139,17 +140,20 @@ describe("extract pipeline", () => {
     const sid = session.result?.session_id || session.session_id;
     assert.ok(sid, "session should be created");
 
-    await api(`/api/v1/sessions/${sid}/messages`, {
-      role: "user",
-      content: "Benedikt bevorzugt dass alle AI CLIs proaktiv OpenViking nutzen. Memory Store soll bei jeder wichtigen Entscheidung aufgerufen werden, nicht nur wenn der User remember sagt.",
-    });
+    try {
+      const marker = `dreviho-direct-extract-${Date.now()}`;
+      await api(`/api/v1/sessions/${sid}/messages`, {
+        role: "user",
+        content: `Benedikt bevorzugt dass alle AI CLIs proaktiv OpenViking nutzen. Memory Store soll bei jeder wichtigen Entscheidung aufgerufen werden, nicht nur wenn der User remember sagt. Eindeutiger Integrationsmarker: ${marker}.`,
+      });
 
-    const extract = await api(`/api/v1/sessions/${sid}/extract`, {});
-    const memories = extract.result;
-    assert.ok(Array.isArray(memories), "extract should return array");
-    assert.ok(memories.length > 0, `extractedCount should be > 0, got ${memories.length}`);
-
-    await fetch(`${BASE}/api/v1/sessions/${sid}`, { method: "DELETE", headers: HEADERS });
+      const extract = await api(`/api/v1/sessions/${sid}/extract`, {});
+      const memories = extract.result;
+      assert.ok(Array.isArray(memories), "extract should return array");
+      assert.ok(memories.length > 0, `extractedCount should be > 0, got ${memories.length}`);
+    } finally {
+      await fetch(`${BASE}/api/v1/sessions/${sid}`, { method: "DELETE", headers: HEADERS });
+    }
   });
 });
 

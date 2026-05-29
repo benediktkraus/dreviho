@@ -1,0 +1,5 @@
+{
+  "name": "openviking-memory",
+  "version": "0.2.0",
+  "description": "OpenViking long-term memory for Gemini CLI with proactive recall, capture, and pre-compression context logging."
+}

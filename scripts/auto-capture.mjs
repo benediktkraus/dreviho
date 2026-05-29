@@ -16,7 +16,7 @@
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { loadConfig } from "./config.mjs";
 import { createLogger } from "./debug-log.mjs";
 
@@ -254,6 +254,27 @@ function extractAllTurns(messages) {
   return turns;
 }
 
+function rawCaptureUri(sessionId) {
+  const date = new Date().toISOString().slice(0, 10);
+  const safeSessionId = String(sessionId || Date.now()).replace(/[^a-zA-Z0-9_-]/g, "_");
+  const projectMatch = process.cwd().match(/\/projects\/([^/]+)/);
+  if (projectMatch) {
+    return `viking://resources/projects/${projectMatch[1]}/raw-captures/${date}/${safeSessionId}.md`;
+  }
+  return `viking://resources/system/raw-captures/${date}/${safeSessionId}.md`;
+}
+
+function rawCaptureContent(text) {
+  return [
+    "# Auto Capture Fallback",
+    "",
+    `Captured at: ${new Date().toISOString()}`,
+    "",
+    text,
+    "",
+  ].join("\n");
+}
+
 // ---------------------------------------------------------------------------
 // OpenViking session capture
 // ---------------------------------------------------------------------------
@@ -274,15 +295,42 @@ async function captureToOpenViking(text) {
 
     const extracted = await fetchJSON(
       `/api/v1/sessions/${encodeURIComponent(sessionId)}/extract`,
-      { method: "POST", body: JSON.stringify({}) }
+      { method: "POST", body: JSON.stringify({}) },
+      0
     );
 
-    return { ok: true, count: Array.isArray(extracted) ? extracted.length : 0 };
+    const count = Array.isArray(extracted) ? extracted.length : 0;
+    if (count > 0) return { ok: true, count, fallbackWritten: false };
+
+    const fallbackWritten = await writeMemoryFile(
+      rawCaptureUri(sessionId),
+      rawCaptureContent(text),
+    );
+    return { ok: true, count, fallbackWritten };
   } finally {
     await fetchJSON(`/api/v1/sessions/${encodeURIComponent(sessionId)}`, {
       method: "DELETE",
     }).catch(() => {});
   }
+}
+
+async function writeMemoryFile(uri, content) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const replaceResult = await fetchJSON("/api/v1/content/write", {
+      method: "POST",
+      body: JSON.stringify({ uri, content, mode: "replace" }),
+    }, 0);
+    if (replaceResult) return true;
+
+    const createResult = await fetchJSON("/api/v1/content/write", {
+      method: "POST",
+      body: JSON.stringify({ uri, content, mode: "create" }),
+    }, 0);
+    if (createResult) return true;
+
+    await new Promise(r => setTimeout(r, 250 * (attempt + 1)));
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -441,7 +489,12 @@ async function main() {
   const result = merged
     ? { ok: true, count: 0, merged: true }
     : await captureToOpenViking(scopedText);
-  log("openviking_capture", { sessionCreated: result.ok, extractedCount: result.count || 0, merged });
+  log("openviking_capture", {
+    sessionCreated: result.ok,
+    extractedCount: result.count || 0,
+    fallbackWritten: Boolean(result.fallbackWritten),
+    merged,
+  });
 
   // Record Used: report which recalled memories were in context this session
   try {
@@ -511,9 +564,9 @@ async function main() {
     logError("memory_sync", err);
   }
 
-  if (result.ok && (result.count > 0 || syncCount > 0)) {
+  if (result.ok && (result.count > 0 || result.fallbackWritten || syncCount > 0)) {
     log("done", { captureTurns: captureTurns.length, extractedCount: result.count, syncedFiles: syncCount });
-    approve(`captured ${captureTurns.length} turns, extracted ${result.count} memories, synced ${syncCount} local files`);
+    approve(`captured ${captureTurns.length} turns, extracted ${result.count} memories, fallback ${result.fallbackWritten ? 1 : 0}, synced ${syncCount} local files`);
   } else {
     approve();
   }
@@ -594,11 +647,7 @@ async function syncLocalMemories(sessionId) {
       const content = readFileSync(filePath, "utf-8");
       const { meta } = parseFrontmatter(content);
       const uri = memoryUri(file, meta.type || "", projectSlug);
-      const result = await fetchJSON("/api/v1/content/write", {
-        method: "POST",
-        body: JSON.stringify({ uri, content, mode: "write" }),
-      });
-      if (result) {
+      if (await writeMemoryFile(uri, content)) {
         syncState[file] = mtime;
         synced++;
         log("memory_sync_file", { file, uri, type: meta.type || "unknown" });

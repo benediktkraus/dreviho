@@ -31,6 +31,67 @@ install_shared() {
   info "shared modules → $OV_HOME/"
 }
 
+install_plugin_shared() {
+  local dir="$1/shared"
+  mkdir -p "$dir"
+  cp "$SCRIPT_DIR/shared/scope-resolver.mjs" "$dir/"
+  cp "$SCRIPT_DIR/shared/compaction.mjs" "$dir/"
+  cp "$SCRIPT_DIR/shared/ranking.mjs" "$dir/"
+  cp "$SCRIPT_DIR/shared/decay-cache.mjs" "$dir/"
+  cp "$SCRIPT_DIR/shared/scope-config.json" "$dir/"
+}
+
+update_codex_marketplace() {
+  local mkt="$1"
+  mkdir -p "$mkt/.agents/plugins"
+  python3 - "$mkt/.agents/plugins/marketplace.json" <<'PYEOF'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if path.exists():
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError:
+        data = {}
+else:
+    data = {}
+
+if not isinstance(data, dict):
+    data = {}
+
+data.setdefault("name", "local-plugins")
+data.setdefault("interface", {"displayName": "Local Plugins"})
+
+plugins = data.get("plugins")
+if isinstance(plugins, dict):
+    converted = []
+    for name, meta in plugins.items():
+        converted.append({
+            "name": name,
+            "source": {"source": "local", "path": f"./plugins/{name}"},
+            "policy": {"installation": meta.get("installStatus", "INSTALLED_BY_DEFAULT")},
+            "category": meta.get("category", "Productivity"),
+        })
+    plugins = converted
+elif not isinstance(plugins, list):
+    plugins = []
+
+entry = {
+    "name": "openviking-memory",
+    "source": {"source": "local", "path": "./plugins/openviking-memory"},
+    "policy": {"installation": "INSTALLED_BY_DEFAULT", "authentication": "ON_INSTALL"},
+    "category": "Productivity",
+}
+plugins = [p for p in plugins if not (isinstance(p, dict) and p.get("name") == "openviking-memory")]
+plugins.insert(0, entry)
+data["plugins"] = plugins
+
+path.write_text(json.dumps(data, indent=2) + "\n")
+PYEOF
+}
+
 write_remote_config() {
   # All Mac CLIs share one config (claude-code-memory-plugin/ is the fallback for all)
   # agentId in the config file distinguishes per-CLI writes in OV
@@ -51,7 +112,8 @@ write_remote_config() {
   "recallLimit": 10,
   "scoreThreshold": 0.1,
   "autoRecall": true,
-  "autoCapture": true
+  "autoCapture": true,
+  "captureAssistantTurns": true
 }
 EOF
   info "remote config → $dir/config.json"
@@ -61,7 +123,16 @@ EOF
 install_scripts() {
   local dir="$1"
   mkdir -p "$dir"
-  for f in auto-recall auto-capture config debug-log; do
+  for f in \
+    auto-recall \
+    auto-capture \
+    config \
+    debug-log \
+    pre-compact \
+    subagent-scope \
+    bootstrap-runtime \
+    runtime-common
+  do
     cp "$SCRIPT_DIR/scripts/${f}.mjs" "$dir/"
   done
 }
@@ -117,11 +188,9 @@ install_codex() {
   cp "$SCRIPT_DIR/hooks/codex-plugin.json" "$dir/.codex-plugin/plugin.json"
   cp "$SCRIPT_DIR/hooks/codex-cli.json" "$dir/hooks.json"
   install_scripts "$dir/scripts"
+  install_plugin_shared "$dir"
   write_remote_config
-  mkdir -p "$mkt/.agents/plugins"
-  cat > "$mkt/.agents/plugins/marketplace.json" << 'MKT'
-{"plugins":{"openviking-memory":{"installStatus":"INSTALLED_BY_DEFAULT","icon":"🧠"}}}
-MKT
+  update_codex_marketplace "$mkt"
   info "codex plugin → $dir"
   info "  run: codex plugin marketplace add $mkt"
 }
@@ -131,7 +200,9 @@ install_gemini() {
 
   mkdir -p "$dir/scripts" "$dir/hooks"
   cp "$SCRIPT_DIR/hooks/gemini-cli.json" "$dir/hooks/hooks.json"
+  cp "$SCRIPT_DIR/hooks/gemini-extension.json" "$dir/gemini-extension.json"
   install_scripts "$dir/scripts"
+  install_plugin_shared "$dir"
   write_remote_config
 
   local enable="$HOME/.gemini/extensions/extension-enablement.json"

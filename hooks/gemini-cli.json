@@ -25,6 +25,19 @@
           }
         ]
       }
+    ],
+    "PreCompress": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${extensionPath}/scripts/pre-compact.mjs",
+            "name": "openviking-precompress",
+            "description": "Log active memories before context compression",
+            "timeout": 10000
+          }
+        ]
+      }
     ]
   }
 }

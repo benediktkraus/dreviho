@@ -1,8 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const SHARED = process.env.OPENVIKING_HOME || `${homedir()}/.openviking`;
+const SHARED = process.env.OPENVIKING_HOME || join(dirname(fileURLToPath(import.meta.url)), "..", "shared");
 const { mmrFilter, formatCitation, clampScore, buildQueryProfile, getRankingBreakdown, dedupeByAbstract, pickMemories, loadRankingConfig } = await import(`${SHARED}/ranking.mjs`);
 const { temporalDecayFactor, isEvergreen, recordSeen, getAgeDays } = await import(`${SHARED}/decay-cache.mjs`);
 

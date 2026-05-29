@@ -4,9 +4,11 @@
   "apiKey": "YOUR_API_KEY_HERE",
   "account": "YOUR_ACCOUNT",
   "user": "YOUR_USER",
+  "autoRecall": true,
+  "autoCapture": true,
   "recallLimit": 10,
   "captureMode": "semantic",
   "captureTimeoutMs": 30000,
-  "captureAssistantTurns": false,
+  "captureAssistantTurns": true,
   "logRankingDetails": false
 }

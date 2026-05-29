@@ -39,6 +39,20 @@ async function fetchJSON(path, init = {}) {
   }
 }
 
+async function writeContent(uri, content, preferredMode = "replace") {
+  const result = await fetchJSON("/api/v1/content/write", {
+    method: "POST",
+    body: JSON.stringify({ uri, content, mode: preferredMode }),
+  });
+  if (result) return result;
+
+  const fallbackMode = preferredMode === "create" ? "replace" : "create";
+  return fetchJSON("/api/v1/content/write", {
+    method: "POST",
+    body: JSON.stringify({ uri, content, mode: fallbackMode }),
+  });
+}
+
 async function main() {
   let input;
   try {
@@ -58,18 +72,11 @@ async function main() {
     log("subagent_start", { sessionId, agentId });
     // Create scope marker for child agent
     const childUri = `viking://agent/${agentId || sessionId}/meta/spawn`;
-    await fetchJSON("/api/v1/content/write", {
-      method: "POST",
-      body: JSON.stringify({
-        uri: childUri,
-        content: JSON.stringify({
-          parent: cfg.agentId,
-          spawned: new Date().toISOString(),
-          hook: "SubagentStart",
-        }),
-        mode: "overwrite",
-      }),
-    });
+    await writeContent(childUri, JSON.stringify({
+      parent: cfg.agentId,
+      spawned: new Date().toISOString(),
+      hook: "SubagentStart",
+    }), "create");
     log("scope_created", { childUri });
   }
 
@@ -77,10 +84,7 @@ async function main() {
     log("subagent_stop", { sessionId, agentId });
     // Cleanup spawn metadata (memories stay accessible via shared OV)
     const childUri = `viking://agent/${agentId || sessionId}/meta/spawn`;
-    await fetchJSON("/api/v1/content/write", {
-      method: "POST",
-      body: JSON.stringify({ uri: childUri, content: "", mode: "overwrite" }),
-    });
+    await writeContent(childUri, "", "replace");
     log("scope_cleaned", { childUri });
   }
 

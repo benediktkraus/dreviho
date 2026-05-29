@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "node --test tests/config.test.mjs"
+    "test": "node --test tests/config.test.mjs tests/ranking.test.mjs",
+    "test:integration": "node --test tests/integration.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",

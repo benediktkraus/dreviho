@@ -86,12 +86,17 @@ export class OVClient {
     return null;
   }
 
-  async contentWrite(uri: string, content: string, mode: "overwrite" | "append" = "overwrite"): Promise<boolean> {
+  async contentWrite(uri: string, content: string, mode: "replace" | "append" | "create" = "replace"): Promise<boolean> {
     const result = await this.fetchJSON("/api/v1/content/write", {
       method: "POST",
       body: JSON.stringify({ uri, content, mode }),
     }, this.cfg.captureTimeoutMs);
     return result !== null;
+  }
+
+  async contentUpsert(uri: string, content: string): Promise<boolean> {
+    if (await this.contentWrite(uri, content, "replace")) return true;
+    return this.contentWrite(uri, content, "create");
   }
 
   async sessionCreate(): Promise<string | null> {
@@ -115,6 +120,7 @@ export class OVClient {
       `/api/v1/sessions/${encodeURIComponent(sessionId)}/extract`,
       { method: "POST", body: JSON.stringify({}) },
       this.cfg.captureTimeoutMs,
+      0,
     );
     return Array.isArray(result) ? result : [];
   }

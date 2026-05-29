@@ -179,7 +179,7 @@ export function loadConfig() {
     captureMode: file.captureMode === "keyword" ? "keyword" : "semantic",
     captureMaxLength: Math.max(200, Math.floor(num(file.captureMaxLength, 24000))),
     captureTimeoutMs,
-    captureAssistantTurns: bool(file.captureAssistantTurns),
+    captureAssistantTurns: bool(file.captureAssistantTurns, true),
 
     // Debug
     debug,

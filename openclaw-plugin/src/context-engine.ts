@@ -258,9 +258,11 @@ export class OpenVikingContextEngine implements ContextEngine {
     if (!merged) {
       // Add project scope prefix if available
       let scopedText = decision.text;
+      let projectSlug: string | null = null;
       await loadSharedModules();
       if (_resolveScopes) {
-        const { projectSlug } = _resolveScopes(process.cwd());
+        const scopes = _resolveScopes(process.cwd());
+        projectSlug = scopes.projectSlug;
         if (projectSlug) scopedText = `[project:${projectSlug}] ${decision.text}`;
       }
       // Normal capture: session → message → extract → delete
@@ -268,7 +270,24 @@ export class OpenVikingContextEngine implements ContextEngine {
       if (sessionId) {
         try {
           await this.client.sessionAddMessage(sessionId, "user", scopedText);
-          await this.client.sessionExtract(sessionId);
+          const extracted = await this.client.sessionExtract(sessionId);
+          if (extracted.length === 0) {
+            const date = new Date().toISOString().slice(0, 10);
+            const fallbackRoot = projectSlug
+              ? `viking://resources/projects/${projectSlug}/raw-captures`
+              : "viking://resources/system/raw-captures";
+            await this.client.contentUpsert(
+              `${fallbackRoot}/${date}/${sessionId}.md`,
+              [
+                "# OpenClaw Auto Capture Fallback",
+                "",
+                `Captured at: ${new Date().toISOString()}`,
+                "",
+                scopedText,
+                "",
+              ].join("\n"),
+            );
+          }
         } finally {
           await this.client.sessionDelete(sessionId);
         }
@@ -442,7 +461,7 @@ export class OpenVikingContextEngine implements ContextEngine {
   }): Promise<SubagentSpawnPreparation | undefined> {
     // Create a session scope marker for the child
     const childUri = `viking://agent/${params.childSessionKey}/`;
-    await this.client.contentWrite(
+    await this.client.contentUpsert(
       `${childUri}meta/spawn`,
       JSON.stringify({
         parent: params.parentSessionKey,
@@ -450,13 +469,12 @@ export class OpenVikingContextEngine implements ContextEngine {
         spawned: new Date().toISOString(),
         ttlMs: params.ttlMs,
       }),
-      "overwrite",
     );
 
     return {
       rollback: async () => {
         // Cleanup child scope if spawn fails
-        await this.client.contentWrite(`${childUri}meta/spawn`, "", "overwrite").catch(() => {});
+        await this.client.contentWrite(`${childUri}meta/spawn`, "", "replace").catch(() => {});
       },
     };
   }
@@ -471,7 +489,7 @@ export class OpenVikingContextEngine implements ContextEngine {
   }): Promise<void> {
     // Cleanup: remove spawn metadata (memories stay in OV — shared access)
     const childUri = `viking://agent/${params.childSessionKey}/meta/spawn`;
-    await this.client.contentWrite(childUri, "", "overwrite").catch(() => {});
+    await this.client.contentWrite(childUri, "", "replace").catch(() => {});
   }
 
   // =========================================================================

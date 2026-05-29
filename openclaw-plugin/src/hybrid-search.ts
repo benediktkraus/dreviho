@@ -35,26 +35,26 @@ export async function grepSearch(client: OVClient, keywords: string[], limit: nu
 }
 
 export function rrfMerge(semanticResults: OVSearchResult[], grepResults: OVSearchResult[], k = 60): OVSearchResult[] {
-  const scoreMap = new Map<string, { item: OVSearchResult; score: number }>();
+  const scoreMap = new Map<string, { item: OVSearchResult; rrfScore: number }>();
 
   semanticResults.forEach((item, rank) => {
     const key = item.uri;
-    const prev = scoreMap.get(key) || { item, score: 0 };
-    prev.score += 1 / (k + rank + 1);
+    const prev = scoreMap.get(key) || { item, rrfScore: 0 };
+    prev.rrfScore += 1 / (k + rank + 1);
     scoreMap.set(key, prev);
   });
 
   grepResults.forEach((item, rank) => {
     const key = item.uri || `grep-${rank}`;
-    const prev = scoreMap.get(key) || { item, score: 0 };
-    prev.score += 1 / (k + rank + 1);
+    const prev = scoreMap.get(key) || { item, rrfScore: 0 };
+    prev.rrfScore += 1 / (k + rank + 1);
     if (!prev.item.uri && item.uri) prev.item = item;
     scoreMap.set(key, prev);
   });
 
   return [...scoreMap.values()]
-    .sort((a, b) => b.score - a.score)
-    .map(e => ({ ...e.item, score: e.score }));
+    .sort((a, b) => b.rrfScore - a.rrfScore)
+    .map(e => ({ ...e.item, score: e.item.score }));
 }
 
 /**
